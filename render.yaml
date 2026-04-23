@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: between-the-lines
+    env: node
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: BTL_TESTER_PASSWORD
+        sync: false
