@@ -1,11 +1,8 @@
-// Updated server.js with root-level imports
+// Updated import paths for root-level requires
+const anomalyRules = require('anomalyRules');
+const parseUpload = require('parseUpload');
+const normalizeMessages = require('normalizeMessages');
+const analyzeMessages = require('analyzeMessages');
+const buildReport = require('buildReport');
 
-import anomalyRules from './anomalyRules';
-import parseUpload from './parseUpload';
-import normalizeMessages from './normalizeMessages';
-import analyzeMessages from './analyzeMessages';
-import buildReport from './buildReport';
-
-// Other server.js code...
-
-// Exports and function calls...
+// Rest of the server.js content...
