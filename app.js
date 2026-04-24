@@ -113,6 +113,17 @@ const TESTIMONIALS = [
   },
 ];
 
+const ANALYTICS_EVENTS = new Set([
+  "landing_page_view",
+  "click_upload",
+  "click_sample",
+  "upload_started",
+  "upload_completed",
+  "report_viewed",
+  "feedback_clicked",
+]);
+const ANALYTICS_ENDPOINT = "/api/analytics";
+
 const EXPORT_GUIDE_ITEMS = [
   {
     title: "WhatsApp",
@@ -140,6 +151,73 @@ const EXPORT_GUIDE_ITEMS = [
       "Use one message per row. Include a timestamp column, a sender/from column, and a text/message/body column. An id column is optional but helps with deduping repeated rows.",
   },
 ];
+
+function trackEvent(name) {
+  if (!ANALYTICS_EVENTS.has(name) || typeof window === "undefined") return;
+
+  const payload = {
+    name,
+    at: new Date().toISOString(),
+    path: window.location.pathname,
+  };
+
+  const queue = Array.isArray(window.__BTL_ANALYTICS__) ? window.__BTL_ANALYTICS__ : [];
+  queue.push(payload);
+  window.__BTL_ANALYTICS__ = queue;
+
+  if (typeof window.plausible === "function") {
+    window.plausible(name);
+  }
+
+  if (typeof window.gtag === "function") {
+    window.gtag("event", name);
+  }
+
+  if (Array.isArray(window.dataLayer)) {
+    window.dataLayer.push({ event: name });
+  }
+
+  try {
+    const body = JSON.stringify(payload);
+    if (navigator.sendBeacon) {
+      const eventBlob = new Blob([body], { type: "application/json" });
+      const sent = navigator.sendBeacon(ANALYTICS_ENDPOINT, eventBlob);
+      if (!sent) {
+        fetch(ANALYTICS_ENDPOINT, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body,
+          keepalive: true,
+        }).catch(() => {});
+      }
+    } else {
+      fetch(ANALYTICS_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body,
+        keepalive: true,
+      }).catch(() => {});
+    }
+  } catch {
+    // Analytics should never interrupt the review flow.
+  }
+
+  window.dispatchEvent(new CustomEvent("btl-analytics", { detail: payload }));
+}
+
+function normalizeSamplePayload(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (payload && typeof payload === "object") {
+    if (Array.isArray(payload.messages)) return payload.messages;
+    if (Array.isArray(payload.items)) return payload.items;
+    if (Array.isArray(payload.records)) return payload.records;
+  }
+  return payload;
+}
 
 const MODE_COPY = {
   general: {
@@ -1355,7 +1433,9 @@ function HeroSection({ onOpenFile, onUseSample, disabled }) {
           <p className="hero-entry-note">Start with your own JSON or CSV export, or preview the sample report first.</p>
 
           <div className="hero-actions">
-            <button type="button" className="secondary-button" disabled=${disabled} onClick=${onUseSample}>
+            <button type="button" className="primary-button" disabled=${disabled} onClick=${onOpenFile}>
+              Upload file
+            </button>
             <button type="button" className="secondary-button" disabled=${disabled} onClick=${onUseSample}>
               View sample report
             </button>
@@ -1793,7 +1873,7 @@ function ReportView({ presentation, timelineExpanded, highlightedTimelineDay, on
   `;
 }
 
-function SiteFooter() {
+function SiteFooter({ onFeedbackClick }) {
   return html`
     <footer className="site-footer no-print">
       <div className="footer-divider" aria-hidden="true"></div>
@@ -1805,6 +1885,15 @@ function SiteFooter() {
           <a href="/terms">Terms</a>
           <a href="/privacy">Privacy</a>
           <a href="/disclaimer">Disclaimer</a>
+          <a
+            href="#"
+            onClick=${(event) => {
+              event.preventDefault();
+              onFeedbackClick?.();
+            }}
+          >
+            Send feedback
+          </a>
         </nav>
       </div>
     </footer>
@@ -1823,6 +1912,14 @@ function App() {
   const [pendingInspectTarget, setPendingInspectTarget] = useState(null);
 
   const fileInputRef = useRef(null);
+  const hasTrackedLandingView = useRef(false);
+  const lastTrackedReportId = useRef("");
+
+  useEffect(() => {
+    if (hasTrackedLandingView.current) return;
+    hasTrackedLandingView.current = true;
+    trackEvent("landing_page_view");
+  }, []);
 
   useEffect(() => {
     fetch("/api/config")
@@ -1845,6 +1942,19 @@ function App() {
     document.title = result
       ? `Between The Lines - ${result.report.metadata.sourceName}`
       : "Between The Lines";
+  }, [result]);
+
+  useEffect(() => {
+    if (!result) {
+      lastTrackedReportId.current = "";
+      return;
+    }
+
+    const reportId = `${result.report.metadata.sourceName}:${result.report.metadata.receivedAt}`;
+    if (lastTrackedReportId.current === reportId) return;
+
+    lastTrackedReportId.current = reportId;
+    trackEvent("report_viewed");
   }, [result]);
 
   useEffect(() => {
@@ -1915,7 +2025,11 @@ function App() {
   }, [pendingInspectTarget, timelineExpanded]);
 
   async function analyzeSource(nextSource) {
-    if (!defaultRules) return;
+    if (!defaultRules) return false;
+
+    if (nextSource.file) {
+      trackEvent("upload_started");
+    }
 
     setSource(nextSource);
     setIsProcessing(true);
@@ -1962,6 +2076,10 @@ function App() {
         throw new Error(data.error || "Analysis failed.");
       }
 
+      if (nextSource.file) {
+        trackEvent("upload_completed");
+      }
+
       setResult(data);
       setStatus({
         tone: "ready",
@@ -1969,6 +2087,7 @@ function App() {
         title: "Your report is ready to read.",
         detail: "Start with the three cards near the top of the report.",
       });
+      return true;
     } catch (error) {
       setStatus({
         tone: "error",
@@ -1976,6 +2095,7 @@ function App() {
         title: "The report could not be generated.",
         detail: String(error?.message || error || "Please try another JSON or CSV conversation export."),
       });
+      return false;
     } finally {
       setIsProcessing(false);
     }
@@ -2005,6 +2125,9 @@ function App() {
   async function handleUseSample() {
     if (!defaultRules) return;
 
+    console.log("Sample button clicked");
+    trackEvent("click_sample");
+
     try {
       const response = await fetch(SAMPLE_SOURCE.path);
       if (!response.ok) {
@@ -2012,22 +2135,43 @@ function App() {
       }
 
       const content = await response.text();
-      await analyzeSource({
+      const parsed = JSON.parse(content);
+      const normalized = normalizeSamplePayload(parsed);
+      const normalizedContent = JSON.stringify(normalized);
+      const sampleFile = new File([normalizedContent], SAMPLE_SOURCE.name, { type: "application/json" });
+
+      console.log("Sample loaded");
+      console.log("Sample analysis started");
+
+      const success = await analyzeSource({
         name: SAMPLE_SOURCE.name,
-        content,
+        file: sampleFile,
       });
+
+      if (!success) {
+        const message = "The sample report could not be analyzed.";
+        window.alert(message);
+      }
     } catch (error) {
+      const message = String(error?.message || error || "Please upload a file instead.");
+      console.error("Sample loading failed", error);
       setStatus({
         tone: "error",
         eyebrow: "Sample unavailable",
         title: "The sample report could not be loaded.",
-        detail: String(error?.message || error || "Please upload a file instead."),
+        detail: message,
       });
+      window.alert(message);
     }
   }
 
   function handleOpenFile() {
+    trackEvent("click_upload");
     fileInputRef.current?.click();
+  }
+
+  function handleFeedbackClick() {
+    trackEvent("feedback_clicked");
   }
 
   function handleModeChange(nextMode) {
@@ -2127,7 +2271,7 @@ function App() {
             `}
       </main>
 
-      <${SiteFooter} />
+      <${SiteFooter} onFeedbackClick=${handleFeedbackClick} />
     </div>
   `;
 }
