@@ -2134,9 +2134,9 @@ function App() {
         throw new Error("The sample report could not be loaded.");
       }
 
-      const content = await response.text();
-      const parsed = JSON.parse(content);
-      const normalized = normalizeSamplePayload(parsed);
+      const data = await response.json();
+      console.log(data);
+      const normalized = normalizeSamplePayload(data);
       const normalizedContent = JSON.stringify(normalized);
       const sampleFile = new File([normalizedContent], SAMPLE_SOURCE.name, { type: "application/json" });
 
