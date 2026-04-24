@@ -2089,7 +2089,9 @@ function App() {
     (async () => {
       try {
         for (let attempt = 0; attempt < 12; attempt += 1) {
-          const response = await fetch(`/payment-status?session_id=${encodeURIComponent(sessionId)}`);
+          const response = await fetch(`/payment-status?session_id=${encodeURIComponent(sessionId)}`, {
+            cache: "no-store",
+          });
           const data = await response.json().catch(() => ({}));
 
           if (!response.ok) {

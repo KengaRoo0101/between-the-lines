@@ -540,6 +540,8 @@ app.get("/payment-status", async (request, response, next) => {
 
   try {
     const sessionId = String(request.query?.session_id || "");
+    response.set("Cache-Control", "no-store");
+
     if (!sessionId) {
       response.status(400).json({
         error: "A checkout session id is required.",
