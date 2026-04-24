@@ -1751,6 +1751,15 @@ summary:focus-visible {
   color: rgba(212, 175, 55, 0.88);
 }
 
+.footer-inline-link {
+  color: rgba(245, 241, 234, 0.78);
+  text-decoration: none;
+}
+
+.footer-inline-link:hover {
+  color: rgba(212, 175, 55, 0.88);
+}
+
 .legal-page {
   min-height: 100vh;
 }

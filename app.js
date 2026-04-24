@@ -2066,7 +2066,12 @@ function SiteFooter({ onFeedbackClick }) {
     <footer className="site-footer no-print">
       <div className="footer-divider" aria-hidden="true"></div>
       <div className="site-footer-copy">
-        <p className="footer-parent-brand">LRC Property LLC</p>
+        <p className="footer-parent-brand">Operated by LRC Property LLC</p>
+        <p className="footer-legal">Riverside County, California</p>
+        <p className="footer-legal">
+          Contact:
+          <a className="footer-inline-link" href="mailto:lrcpropertyllc@outlook.com"> lrcpropertyllc@outlook.com</a>
+        </p>
         <p className="footer-legal">© 2026 LRC Property LLC. All rights reserved.</p>
         <p className="footer-legal">Patent pending. For informational purposes only. Not professional advice.</p>
         <${LegalLinks} includeDisclaimer=${true} />
