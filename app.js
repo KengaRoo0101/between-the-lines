@@ -40,6 +40,13 @@ const SAMPLE_SOURCE = {
   path: "/samples/sample-conversation.json",
 };
 
+const LEGAL_LINKS = [
+  { href: "/terms", label: "Terms" },
+  { href: "/privacy", label: "Privacy" },
+  { href: "/refunds", label: "Refunds" },
+  { href: "/data-retention", label: "Data retention" },
+];
+
 const HERO_USE_CASES = [
   {
     title: "Business / Documentation",
@@ -1463,7 +1470,78 @@ function HeroUseCases() {
   `;
 }
 
-function HeroSection({ onOpenFile, onUseSample, disabled }) {
+function LegalLinks({ className = "", includeDisclaimer = false }) {
+  const items = includeDisclaimer
+    ? [...LEGAL_LINKS, { href: "/disclaimer", label: "Disclaimer" }]
+    : LEGAL_LINKS;
+
+  return html`
+    <nav className=${`footer-links ${className}`.trim()} aria-label="Legal links">
+      ${items.map(
+        (item) => html`
+          <a key=${item.href} href=${item.href} target="_blank" rel="noreferrer">
+            ${item.label}
+          </a>
+        `,
+      )}
+    </nav>
+  `;
+}
+
+function ConsentChecklist({
+  hasUploadRightsConsent,
+  hasResearchConsent,
+  consentError,
+  onUploadRightsChange,
+  onResearchConsentChange,
+}) {
+  return html`
+    <div className="consent-panel">
+      <label className="consent-checkbox">
+        <input
+          type="checkbox"
+          checked=${hasUploadRightsConsent}
+          onChange=${(event) => onUploadRightsChange(event.target.checked)}
+        />
+        <span>
+          I confirm I have the right to upload this data and agree to the
+          <a href="/terms" target="_blank" rel="noreferrer"> Terms </a>
+          and
+          <a href="/privacy" target="_blank" rel="noreferrer"> Privacy Policy</a>.
+        </span>
+      </label>
+
+      <label className="consent-checkbox consent-checkbox-optional">
+        <input
+          type="checkbox"
+          checked=${hasResearchConsent}
+          onChange=${(event) => onResearchConsentChange(event.target.checked)}
+        />
+        <span>
+          I agree to allow anonymized pattern data to be used to improve research, safety tools, and communication
+          insights. My private messages and identifying details will not be sold.
+        </span>
+      </label>
+
+      ${consentError
+        ? html`
+            <p className="consent-error" role="alert">${consentError}</p>
+          `
+        : null}
+    </div>
+  `;
+}
+
+function HeroSection({
+  onOpenFile,
+  onUseSample,
+  disabled,
+  hasUploadRightsConsent,
+  hasResearchConsent,
+  consentError,
+  onUploadRightsChange,
+  onResearchConsentChange,
+}) {
   return html`
     <section className="hero-card no-print" data-reveal>
       <div className="hero-copy-block">
@@ -1474,6 +1552,14 @@ function HeroSection({ onOpenFile, onUseSample, disabled }) {
 
         <div className="hero-entry-panel">
           <p className="hero-entry-note">Start with your own JSON or CSV export, or preview the sample report first.</p>
+
+          <${ConsentChecklist}
+            hasUploadRightsConsent=${hasUploadRightsConsent}
+            hasResearchConsent=${hasResearchConsent}
+            consentError=${consentError}
+            onUploadRightsChange=${onUploadRightsChange}
+            onResearchConsentChange=${onResearchConsentChange}
+          />
 
           <div className="hero-actions">
             <button type="button" className="primary-button" disabled=${disabled} onClick=${onOpenFile}>
@@ -1694,6 +1780,12 @@ function PaywallCard({ onUnlock, onBack, isStartingCheckout, checkoutError }) {
         : null}
 
       <p className="trust-line">Private. Your data is not sold. Optional anonymized research only.</p>
+
+      <p className="paywall-legal-copy">
+        Payments are processed by Stripe. Digital reports are generally non-refundable once generated, except where
+        required by law.
+      </p>
+      <${LegalLinks} className="paywall-links" />
     </section>
   `;
 }
@@ -1977,10 +2069,8 @@ function SiteFooter({ onFeedbackClick }) {
         <p className="footer-parent-brand">LRC Property LLC</p>
         <p className="footer-legal">© 2026 LRC Property LLC. All rights reserved.</p>
         <p className="footer-legal">Patent pending. For informational purposes only. Not professional advice.</p>
-        <nav className="footer-links" aria-label="Legal links">
-          <a href="/terms">Terms</a>
-          <a href="/privacy">Privacy</a>
-          <a href="/disclaimer">Disclaimer</a>
+        <${LegalLinks} includeDisclaimer=${true} />
+        <nav className="footer-links footer-links-secondary" aria-label="Feedback links">
           <a
             href="#"
             onClick=${(event) => {
@@ -2006,6 +2096,9 @@ function App() {
   const [mode, setMode] = useState("general");
   const [status, setStatus] = useState(DEFAULT_STATUS);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [hasUploadRightsConsent, setHasUploadRightsConsent] = useState(false);
+  const [hasResearchConsent, setHasResearchConsent] = useState(false);
+  const [consentError, setConsentError] = useState("");
   const [timelineExpanded, setTimelineExpanded] = useState(false);
   const [highlightedTimelineDay, setHighlightedTimelineDay] = useState("");
   const [pendingInspectTarget, setPendingInspectTarget] = useState(null);
@@ -2036,6 +2129,13 @@ function App() {
         });
       });
   }, []);
+
+  useEffect(() => {
+    if (!hasUploadRightsConsent && !consentError) return;
+    if (hasUploadRightsConsent) {
+      setConsentError("");
+    }
+  }, [hasUploadRightsConsent, consentError]);
 
   useEffect(() => {
     const snapshot = readReportSession();
@@ -2254,6 +2354,8 @@ function App() {
         body.append("file", nextSource.file);
         body.append("rules", JSON.stringify(defaultRules));
         body.append("timezone", timezone);
+        body.append("researchConsent", hasResearchConsent ? "true" : "false");
+        body.append("uploadRightsConfirmed", nextSource.isSample ? "false" : "true");
 
         response = await fetch("/upload", {
           method: "POST",
@@ -2270,6 +2372,7 @@ function App() {
             content: nextSource.content,
             rules: defaultRules,
             timezone,
+            researchConsent: hasResearchConsent,
           }),
         });
       }
@@ -2321,7 +2424,20 @@ function App() {
     const file = event.target.files && event.target.files[0];
     if (!file) return;
 
+    if (!hasUploadRightsConsent) {
+      setConsentError("Confirm that you have the right to upload this data before using your own file.");
+      setStatus({
+        tone: "error",
+        eyebrow: "Consent required",
+        title: "Confirm your upload rights before continuing.",
+        detail: "Check the consent box above the upload button, then choose your file again.",
+      });
+      event.target.value = "";
+      return;
+    }
+
     try {
+      setConsentError("");
       await analyzeSource({
         name: file.name,
         file,
@@ -2383,6 +2499,17 @@ function App() {
   }
 
   function handleOpenFile() {
+    if (!hasUploadRightsConsent) {
+      setConsentError("Confirm that you have the right to upload this data before using your own file.");
+      setStatus({
+        tone: "error",
+        eyebrow: "Consent required",
+        title: "Confirm your upload rights before continuing.",
+        detail: "Sample reports stay free to preview. For your own file, confirm the checkbox first.",
+      });
+      return;
+    }
+
     trackEvent("click_upload");
     fileInputRef.current?.click();
   }
@@ -2519,6 +2646,11 @@ function App() {
                 onOpenFile=${handleOpenFile}
                 onUseSample=${handleUseSample}
                 disabled=${!configReady || isProcessing}
+                hasUploadRightsConsent=${hasUploadRightsConsent}
+                hasResearchConsent=${hasResearchConsent}
+                consentError=${consentError}
+                onUploadRightsChange=${setHasUploadRightsConsent}
+                onResearchConsentChange=${setHasResearchConsent}
               />
 
               <${StartGuidanceSection}
