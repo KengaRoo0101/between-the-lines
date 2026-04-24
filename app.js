@@ -1355,9 +1355,7 @@ function HeroSection({ onOpenFile, onUseSample, disabled }) {
           <p className="hero-entry-note">Start with your own JSON or CSV export, or preview the sample report first.</p>
 
           <div className="hero-actions">
-            <button type="button" className="primary-button" disabled=${disabled} onClick=${onOpenFile}>
-              Upload file
-            </button>
+            <button type="button" className="secondary-button" disabled=${disabled} onClick=${onUseSample}>
             <button type="button" className="secondary-button" disabled=${disabled} onClick=${onUseSample}>
               View sample report
             </button>
