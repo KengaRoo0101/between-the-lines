@@ -2077,9 +2077,8 @@ function SiteFooter({ onFeedbackClick }) {
         <${LegalLinks} includeDisclaimer=${true} />
         <nav className="footer-links footer-links-secondary" aria-label="Feedback links">
           <a
-            href="#"
-            onClick=${(event) => {
-              event.preventDefault();
+            href="mailto:lrcpropertyllc@outlook.com?subject=Between%20The%20Lines%20feedback"
+            onClick=${() => {
               onFeedbackClick?.();
             }}
           >

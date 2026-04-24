@@ -1,6 +1,4 @@
 const path = require("path");
-const crypto = require("crypto");
-
 const express = require("express");
 const multer = require("multer");
 const Stripe = require("stripe");
@@ -17,9 +15,6 @@ const MAX_UPLOAD_BYTES = 6 * 1024 * 1024;
 const PUBLIC_URL = String(process.env.PUBLIC_URL || `http://localhost:${PORT}`).replace(/\/+$/, "");
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "";
-const ACCESS_COOKIE = "btl_tester_access";
-const ACCESS_TOKEN_INPUT = "between-the-lines-tester-access";
-const ACCESS_PASSWORD = process.env.BTL_TESTER_PASSWORD || process.env.TESTER_PASSWORD || "";
 const ALLOWED_ANALYTICS_EVENTS = new Set([
   "landing_page_view",
   "click_upload",
@@ -42,175 +37,6 @@ const upload = multer({
   },
 });
 const parseJson = express.json({ limit: "6mb" });
-const parseUrlencoded = express.urlencoded({ extended: false, limit: "16kb" });
-
-function escapeHtml(value) {
-  return String(value || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function parseCookies(cookieHeader) {
-  return String(cookieHeader || "")
-    .split(";")
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .reduce((cookies, part) => {
-      const separator = part.indexOf("=");
-      if (separator === -1) return cookies;
-      const key = part.slice(0, separator);
-      const value = part.slice(separator + 1);
-      cookies[key] = decodeURIComponent(value);
-      return cookies;
-    }, {});
-}
-
-function accessToken() {
-  if (!ACCESS_PASSWORD) return "";
-  return crypto.createHmac("sha256", ACCESS_PASSWORD).update(ACCESS_TOKEN_INPUT).digest("hex");
-}
-
-function tokensMatch(left, right) {
-  const leftBuffer = Buffer.from(String(left || ""));
-  const rightBuffer = Buffer.from(String(right || ""));
-  return leftBuffer.length === rightBuffer.length && crypto.timingSafeEqual(leftBuffer, rightBuffer);
-}
-
-function hasTesterAccess(request) {
-  const cookies = parseCookies(request.headers.cookie);
-  return Boolean(ACCESS_PASSWORD && tokensMatch(cookies[ACCESS_COOKIE], accessToken()));
-}
-
-function renderAccessGate({ error = "", redirectTo = "/" } = {}) {
-  return `<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Between The Lines Access</title>
-    <style>
-      :root {
-        color-scheme: dark;
-        --bg: #0b0b0d;
-        --card: rgba(17, 17, 20, 0.94);
-        --ink: #f5f1ea;
-        --muted: #b3ada4;
-        --line: rgba(245, 241, 234, 0.14);
-        --amber: #c7a45b;
-      }
-
-      * {
-        box-sizing: border-box;
-      }
-
-      body {
-        min-height: 100vh;
-        margin: 0;
-        display: grid;
-        place-items: center;
-        padding: 24px;
-        color: var(--ink);
-        font-family: "Avenir Next", "Aptos", "Segoe UI", sans-serif;
-        background: linear-gradient(180deg, #060608 0%, var(--bg) 100%);
-      }
-
-      main {
-        width: min(100%, 420px);
-        padding: 28px;
-        border: 1px solid var(--line);
-        border-radius: 24px;
-        background: var(--card);
-      }
-
-      h1 {
-        margin: 0;
-        font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
-        font-size: 2rem;
-        line-height: 1;
-      }
-
-      p {
-        margin: 12px 0 0;
-        color: var(--muted);
-        line-height: 1.55;
-      }
-
-      form {
-        display: grid;
-        gap: 14px;
-        margin-top: 22px;
-      }
-
-      label {
-        display: grid;
-        gap: 8px;
-        color: var(--muted);
-        font-size: 0.9rem;
-      }
-
-      input {
-        width: 100%;
-        min-height: 50px;
-        padding: 0 14px;
-        border-radius: 14px;
-        border: 1px solid var(--line);
-        background: rgba(255, 255, 255, 0.04);
-        color: var(--ink);
-        font: inherit;
-      }
-
-      button {
-        min-height: 52px;
-        border: 0;
-        border-radius: 999px;
-        background: var(--amber);
-        color: #0d0d10;
-        font: inherit;
-        font-weight: 700;
-        cursor: pointer;
-      }
-
-      .error {
-        color: #e3a28b;
-      }
-    </style>
-  </head>
-  <body>
-    <main>
-      <h1>Between The Lines</h1>
-      <p>Tester access is required before entering this preview.</p>
-      ${error ? `<p class="error">${escapeHtml(error)}</p>` : ""}
-      <form method="post" action="/tester-access">
-        <input type="hidden" name="redirectTo" value="${escapeHtml(redirectTo)}" />
-        <label>
-          Shared password
-          <input name="password" type="password" autocomplete="current-password" required autofocus />
-        </label>
-        <button type="submit">Enter</button>
-      </form>
-    </main>
-  </body>
-</html>`;
-}
-
-function setAccessCookie(request, response) {
-  const secure = request.secure || request.headers["x-forwarded-proto"] === "https";
-  const parts = [
-    `${ACCESS_COOKIE}=${encodeURIComponent(accessToken())}`,
-    "HttpOnly",
-    "SameSite=Lax",
-    "Path=/",
-    "Max-Age=604800",
-  ];
-
-  if (secure) {
-    parts.push("Secure");
-  }
-
-  response.setHeader("Set-Cookie", parts.join("; "));
-}
 
 function paymentsReady() {
   return Boolean(stripe && STRIPE_WEBHOOK_SECRET);
@@ -265,59 +91,6 @@ app.post("/stripe-webhook", express.raw({ type: "application/json" }), (request,
 });
 
 app.use(parseJson);
-
-function requireTesterAccess(request, response, next) {
-  if (!ACCESS_PASSWORD) {
-    next();
-    return;
-  }
-
-  if (hasTesterAccess(request)) {
-    next();
-    return;
-  }
-
-  const redirectTo = request.originalUrl && request.originalUrl !== "/tester-access" ? request.originalUrl : "/";
-  response.status(200).send(renderAccessGate({ redirectTo }));
-}
-
-app.get("/tester-access", (request, response) => {
-  if (!ACCESS_PASSWORD) {
-    response.redirect(303, "/");
-    return;
-  }
-
-  const redirectTo = typeof request.query?.redirectTo === "string" ? request.query.redirectTo : "/";
-  response.status(200).send(renderAccessGate({
-    redirectTo: redirectTo.startsWith("/") ? redirectTo : "/",
-  }));
-});
-
-app.post("/tester-access", parseUrlencoded, (request, response) => {
-  const submittedPassword = String(request.body?.password || "");
-  const redirectTo = String(request.body?.redirectTo || "/");
-
-  if (!ACCESS_PASSWORD) {
-    response.status(503).send(renderAccessGate({
-      error: "Tester access is not configured.",
-      redirectTo,
-    }));
-    return;
-  }
-
-  if (tokensMatch(submittedPassword, ACCESS_PASSWORD)) {
-    setAccessCookie(request, response);
-    response.redirect(303, redirectTo.startsWith("/") ? redirectTo : "/");
-    return;
-  }
-
-  response.status(401).send(renderAccessGate({
-    error: "That password did not work.",
-    redirectTo,
-  }));
-});
-
-app.use(requireTesterAccess);
 
 function parseRules(value) {
   if (!value) return {};

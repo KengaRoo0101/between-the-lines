@@ -88,16 +88,17 @@ function findBestArray(value, seen = new Set()) {
   if (Array.isArray(value)) {
     candidates.push(value);
     value.forEach((item) => {
-      candidates.push(...findBestArray(item, seen));
+      candidates.push(findBestArray(item, seen));
     });
   } else {
     Object.values(value).forEach((item) => {
-      candidates.push(...findBestArray(item, seen));
+      candidates.push(findBestArray(item, seen));
     });
   }
 
-  candidates.sort((left, right) => scoreRecordArray(right) - scoreRecordArray(left));
-  return candidates[0] || [];
+  const arrayCandidates = candidates.filter(Array.isArray);
+  arrayCandidates.sort((left, right) => scoreRecordArray(right) - scoreRecordArray(left));
+  return arrayCandidates[0] || [];
 }
 
 function canonicalizeRecords(records) {
