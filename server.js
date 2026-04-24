@@ -5,11 +5,11 @@ const express = require("express");
 const multer = require("multer");
 const Stripe = require("stripe");
 
-const { defaultRules, mergeRules } = require("./src/config/anomalyRules");
-const { parseUpload } = require("./src/lib/parseUpload");
-const { normalizeMessages } = require("./src/lib/normalizeMessages");
-const { analyzeMessages } = require("./src/lib/analyzeMessages");
-const { buildReport } = require("./src/lib/buildReport");
+const { defaultRules, mergeRules } = require("./anomalyRules");
+const { parseUpload } = require("./parseUpload");
+const { normalizeMessages } = require("./normalizeMessages");
+const { analyzeMessages } = require("./analyzeMessages");
+const { buildReport } = require("./buildReport");
 
 const PORT = process.env.PORT || 3000;
 const ROOT_DIR = __dirname;
