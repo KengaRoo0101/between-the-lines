@@ -1,0 +1,24 @@
+[
+  {
+    "timestamp[
+  {
+    "timestamp": "2026-01-01T10:00:00Z",
+    "sender": "Alice",
+    "message": "Hey, are we still on for today?"
+  },
+  {
+    "timestamp": "2026-01-01T10:05:00Z",
+    "sender": "Bob",
+    "message": "Yeah, just running a bit late."
+  },
+  {
+    "timestamp": "2026-01-01T10:45:00Z",
+    "sender": "Alice",
+    "message": "No worries, see you soon."
+  },
+  {
+    "timestamp": "2026-01-01T13:10:00Z",
+    "sender": "Bob",
+    "message": "That was great, we should do it again."
+  }
+]
