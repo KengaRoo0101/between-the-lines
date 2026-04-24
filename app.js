@@ -123,6 +123,7 @@ const ANALYTICS_EVENTS = new Set([
   "feedback_clicked",
 ]);
 const ANALYTICS_ENDPOINT = "/api/analytics";
+const REPORT_SESSION_KEY = "btl-report-session";
 
 const EXPORT_GUIDE_ITEMS = [
   {
@@ -217,6 +218,48 @@ function normalizeSamplePayload(payload) {
     if (Array.isArray(payload.records)) return payload.records;
   }
   return payload;
+}
+
+function persistReportSession(payload) {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.sessionStorage.setItem(REPORT_SESSION_KEY, JSON.stringify(payload));
+  } catch {
+    // Ignore storage failures. Checkout can still proceed, but restore may not work.
+  }
+}
+
+function readReportSession() {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const value = window.sessionStorage.getItem(REPORT_SESSION_KEY);
+    return value ? JSON.parse(value) : null;
+  } catch {
+    return null;
+  }
+}
+
+function clearReportSession() {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.sessionStorage.removeItem(REPORT_SESSION_KEY);
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
+function cleanupPaymentQuery() {
+  if (typeof window === "undefined") return;
+
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("paid") && !url.searchParams.has("session_id")) return;
+
+  url.searchParams.delete("paid");
+  url.searchParams.delete("session_id");
+  window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
 }
 
 const MODE_COPY = {
@@ -1602,6 +1645,59 @@ function LoadingState({ source }) {
   `;
 }
 
+function PaywallCard({ onUnlock, onBack, isStartingCheckout, checkoutError }) {
+  return html`
+    <section className="panel paywall no-print" data-reveal>
+      <div className="label">REPORT READY</div>
+
+      <h2 className="headline">Your analysis is complete.</h2>
+
+      <p className="subhead">
+        The full report reveals where patterns shift, where communication breaks, and what stands out beneath the surface.
+      </p>
+
+      <div className="divider" aria-hidden="true"></div>
+
+      <div className="preview-points">
+        <div>• Timeline with key gaps and spikes</div>
+        <div>• Pattern shifts and behavioral changes</div>
+        <div>• Highlighted moments worth reviewing</div>
+      </div>
+
+      <div className="price-block">
+        <div className="price">$12</div>
+        <div className="price-note">one-time report</div>
+      </div>
+
+      <div className="paywall-actions">
+        <button
+          type="button"
+          className="primary-button"
+          onClick=${onUnlock}
+          disabled=${isStartingCheckout}
+        >
+          ${isStartingCheckout ? "Starting checkout..." : "Unlock full report — $12"}
+        </button>
+
+        <button type="button" className="secondary-button" onClick=${onBack} disabled=${isStartingCheckout}>
+          Back
+        </button>
+      </div>
+
+      ${checkoutError
+        ? html`
+            <div className="setup-status tone-error" aria-live="polite">
+              <strong>Checkout could not be started.</strong>
+              <p>${checkoutError}</p>
+            </div>
+          `
+        : null}
+
+      <p className="trust-line">Private. Your data is not sold. Optional anonymized research only.</p>
+    </section>
+  `;
+}
+
 function InspectAction({ label = "Inspect", onClick, className = "" }) {
   return html`
     <button type="button" className=${`inspect-action no-print ${className}`.trim()} onClick=${onClick}>
@@ -1749,8 +1845,8 @@ function ReportView({ presentation, timelineExpanded, highlightedTimelineDay, on
           ${presentation.fileSummary.map(
             (item) => html`
               <article key=${item.label} className="report-summary-card">
-                <span>${item.label}</span>
-                <strong>${item.value}</strong>
+                <div className="metric-label">${item.label}</div>
+                <div className="metric-value">${item.value}</div>
               </article>
             `,
           )}
@@ -1904,6 +2000,9 @@ function App() {
   const [defaultRules, setDefaultRules] = useState(null);
   const [source, setSource] = useState(null);
   const [result, setResult] = useState(null);
+  const [isReportUnlocked, setIsReportUnlocked] = useState(false);
+  const [isStartingCheckout, setIsStartingCheckout] = useState(false);
+  const [checkoutError, setCheckoutError] = useState("");
   const [mode, setMode] = useState("general");
   const [status, setStatus] = useState(DEFAULT_STATUS);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -1939,6 +2038,103 @@ function App() {
   }, []);
 
   useEffect(() => {
+    const snapshot = readReportSession();
+    if (!snapshot?.result) {
+      cleanupPaymentQuery();
+      return;
+    }
+
+    if (snapshot.source) {
+      setSource(snapshot.source);
+    }
+
+    if (typeof snapshot.mode === "string" && MODE_OPTIONS.some((option) => option.id === snapshot.mode)) {
+      setMode(snapshot.mode);
+    }
+
+    setResult(snapshot.result);
+
+    const isFreeReport = Boolean(snapshot.source?.isSample);
+    if (isFreeReport || snapshot.isReportUnlocked) {
+      setIsReportUnlocked(true);
+    }
+
+    const paidState = new URLSearchParams(window.location.search).get("paid");
+    if (paidState === "cancelled" && !isFreeReport) {
+      setCheckoutError("Checkout was cancelled. Your report is still ready when you want to unlock it.");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const params = new URLSearchParams(window.location.search);
+    const paidState = params.get("paid");
+    const sessionId = params.get("session_id");
+    const snapshot = readReportSession();
+
+    if (paidState !== "success" || !sessionId || !snapshot?.result || snapshot.source?.isSample) {
+      if (paidState === "cancelled" || paidState === "success") {
+        cleanupPaymentQuery();
+      }
+      return undefined;
+    }
+
+    let cancelled = false;
+    const delay = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
+
+    setIsStartingCheckout(true);
+    setCheckoutError("");
+
+    (async () => {
+      try {
+        for (let attempt = 0; attempt < 12; attempt += 1) {
+          const response = await fetch(`/payment-status?session_id=${encodeURIComponent(sessionId)}`);
+          const data = await response.json().catch(() => ({}));
+
+          if (!response.ok) {
+            throw new Error(data.error || "The checkout session could not be verified.");
+          }
+
+          if (data.paid) {
+            if (cancelled) return;
+
+            setIsReportUnlocked(true);
+            setStatus({
+              tone: "ready",
+              eyebrow: "Payment complete",
+              title: "Your full report is unlocked.",
+              detail: "Start with the three cards near the top of the report.",
+            });
+            persistReportSession({
+              ...snapshot,
+              isReportUnlocked: true,
+            });
+            return;
+          }
+
+          if (attempt < 11) {
+            await delay(1000);
+          }
+        }
+
+        throw new Error("Payment confirmation is still processing. Refresh in a moment.");
+      } catch (error) {
+        if (cancelled) return;
+        setCheckoutError(String(error?.message || error || "The checkout session could not be verified."));
+      } finally {
+        if (cancelled) return;
+        setIsStartingCheckout(false);
+        cleanupPaymentQuery();
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     document.title = result
       ? `Between The Lines - ${result.report.metadata.sourceName}`
       : "Between The Lines";
@@ -1950,12 +2146,14 @@ function App() {
       return;
     }
 
+    if (!isReportUnlocked) return;
+
     const reportId = `${result.report.metadata.sourceName}:${result.report.metadata.receivedAt}`;
     if (lastTrackedReportId.current === reportId) return;
 
     lastTrackedReportId.current = reportId;
     trackEvent("report_viewed");
-  }, [result]);
+  }, [result, isReportUnlocked]);
 
   useEffect(() => {
     const elements = Array.from(document.querySelectorAll("[data-reveal]"));
@@ -1989,6 +2187,7 @@ function App() {
   }, [result, timelineExpanded]);
 
   useEffect(() => {
+    if (!isReportUnlocked) return undefined;
     if (!result) return undefined;
 
     const timeout = window.setTimeout(() => {
@@ -1999,7 +2198,7 @@ function App() {
     }, 160);
 
     return () => window.clearTimeout(timeout);
-  }, [result]);
+  }, [result, isReportUnlocked]);
 
   useEffect(() => {
     if (!pendingInspectTarget) return undefined;
@@ -2027,12 +2226,14 @@ function App() {
   async function analyzeSource(nextSource) {
     if (!defaultRules) return false;
 
-    if (nextSource.file) {
+    if (nextSource.file && !nextSource.isSample) {
       trackEvent("upload_started");
     }
 
+    setCheckoutError("");
     setSource(nextSource);
     setIsProcessing(true);
+    setIsReportUnlocked(false);
     setTimelineExpanded(false);
     setHighlightedTimelineDay("");
     setStatus({
@@ -2076,11 +2277,24 @@ function App() {
         throw new Error(data.error || "Analysis failed.");
       }
 
-      if (nextSource.file) {
+      const safeSource = {
+        name: nextSource.name,
+        isSample: Boolean(nextSource.isSample),
+      };
+
+      if (nextSource.file && !nextSource.isSample) {
         trackEvent("upload_completed");
       }
 
+      setSource(safeSource);
       setResult(data);
+      setIsReportUnlocked(Boolean(nextSource.isSample));
+      persistReportSession({
+        result: data,
+        source: safeSource,
+        mode,
+        isReportUnlocked: Boolean(nextSource.isSample),
+      });
       setStatus({
         tone: "ready",
         eyebrow: "Report ready",
@@ -2146,6 +2360,7 @@ function App() {
       const success = await analyzeSource({
         name: SAMPLE_SOURCE.name,
         file: sampleFile,
+        isSample: true,
       });
 
       if (!success) {
@@ -2181,15 +2396,56 @@ function App() {
   function handleReset() {
     setResult(null);
     setSource(null);
+    setIsReportUnlocked(false);
+    setIsStartingCheckout(false);
+    setCheckoutError("");
     setIsProcessing(false);
     setTimelineExpanded(false);
     setHighlightedTimelineDay("");
     setPendingInspectTarget(null);
     setStatus(DEFAULT_STATUS);
+    clearReportSession();
   }
 
   function handlePrint() {
     window.print();
+  }
+
+  async function handleUnlockReport() {
+    setCheckoutError("");
+    setIsStartingCheckout(true);
+
+    const snapshot = readReportSession();
+    if (!snapshot?.result) {
+      setIsStartingCheckout(false);
+      setCheckoutError("Your report is not ready yet. Run the analysis again before starting checkout.");
+      return;
+    }
+
+    persistReportSession({
+      ...snapshot,
+      mode,
+      isReportUnlocked: false,
+    });
+
+    try {
+      const response = await fetch("/create-checkout-session", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || !data.url) {
+        throw new Error(data.error || "The checkout session could not be created.");
+      }
+
+      window.location.assign(data.url);
+    } catch (error) {
+      setCheckoutError(String(error?.message || error || "The checkout session could not be created."));
+      setIsStartingCheckout(false);
+    }
   }
 
   function handleInspect(targetId, dayKey = "") {
@@ -2228,22 +2484,33 @@ function App() {
       <main className="page-stack">
         ${reportPresentation
           ? html`
-              <${ReportView}
-                presentation=${reportPresentation}
-                timelineExpanded=${timelineExpanded}
-                highlightedTimelineDay=${highlightedTimelineDay}
-                onInspect=${handleInspect}
-                onToggleTimeline=${() => setTimelineExpanded((current) => !current)}
-                onPrint=${handlePrint}
-                onReset=${handleReset}
-              />
+              ${isReportUnlocked
+                ? html`
+                    <${ReportView}
+                      presentation=${reportPresentation}
+                      timelineExpanded=${timelineExpanded}
+                      highlightedTimelineDay=${highlightedTimelineDay}
+                      onInspect=${handleInspect}
+                      onToggleTimeline=${() => setTimelineExpanded((current) => !current)}
+                      onPrint=${handlePrint}
+                      onReset=${handleReset}
+                    />
 
-              <${SetupSection}
-                mode=${mode}
-                status=${status}
-                isProcessing=${isProcessing}
-                onModeChange=${handleModeChange}
-              />
+                    <${SetupSection}
+                      mode=${mode}
+                      status=${status}
+                      isProcessing=${isProcessing}
+                      onModeChange=${handleModeChange}
+                    />
+                  `
+                : html`
+                    <${PaywallCard}
+                      onUnlock=${handleUnlockReport}
+                      onBack=${handleReset}
+                      isStartingCheckout=${isStartingCheckout}
+                      checkoutError=${checkoutError}
+                    />
+                  `}
             `
           : html`
               <${HeroSection}

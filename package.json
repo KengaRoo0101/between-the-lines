@@ -2,7 +2,7 @@
   "name": "2026-04-19-hi-codex-i-m-levi",
   "version": "1.0.0",
   "description": "Single-session React + Node web app for uploading a JSON or CSV message export, normalizing the records, running rule-based anomaly detection, and formatting a PDF-ready report.",
-  "main": "server.js",
+  "main": "app.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js",
@@ -14,6 +14,7 @@
   "type": "commonjs",
   "dependencies": {
     "express": "^5.2.1",
-    "multer": "^2.1.1"
+    "multer": "^2.1.1",
+    "stripe": "^22.1.0"
   }
 }

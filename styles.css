@@ -35,7 +35,7 @@ body {
   margin: 0;
   min-height: 100vh;
   color: var(--ink);
-  font-family: "Avenir Next", "Aptos", "Segoe UI", sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", sans-serif;
   background:
     radial-gradient(circle at 14% 0%, rgba(199, 164, 91, 0.18), transparent 30%),
     radial-gradient(circle at 86% 0%, rgba(164, 172, 182, 0.12), transparent 34%),
@@ -70,7 +70,9 @@ h3 {
 }
 
 h1 {
-  font-size: clamp(3rem, 6vw, 5.4rem);
+  font-size: 48px;
+  letter-spacing: -0.5px;
+  font-weight: 600;
 }
 
 h2 {
@@ -231,6 +233,30 @@ summary:focus-visible {
   box-shadow: var(--shadow-soft);
 }
 
+.hero-usecase-card,
+.testimonial-card,
+.intake-step-card,
+.intake-entry-card,
+.report-summary-card,
+.pattern-card,
+.next-card,
+.method-card,
+.boundary-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.hero-usecase-card:hover,
+.testimonial-card:hover,
+.intake-step-card:hover,
+.intake-entry-card:hover,
+.report-summary-card:hover,
+.pattern-card:hover,
+.next-card:hover,
+.method-card:hover,
+.boundary-card:hover {
+  transform: translateY(-2px);
+}
+
 .panel,
 .report-masthead {
   padding: 34px;
@@ -366,21 +392,21 @@ summary:focus-visible {
 }
 
 .primary-button {
-  background: var(--amber);
-  color: #0d0d10;
-  box-shadow: 0 16px 32px rgba(199, 164, 91, 0.26);
+  background: #c6a96b;
+  color: #111;
+  padding: 14px 22px;
+  font-weight: 600;
 }
 
 .primary-button:hover:not(:disabled) {
   transform: translateY(-1px);
-  background: #d5b36b;
-  box-shadow: 0 18px 40px rgba(212, 175, 55, 0.32);
+  box-shadow: 0 6px 20px rgba(198, 169, 107, 0.25);
 }
 
 .secondary-button {
-  background: rgba(255, 255, 255, 0.03);
-  color: var(--ink);
-  border-color: rgba(245, 241, 234, 0.14);
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #f5f5f5;
 }
 
 .secondary-button:hover:not(:disabled) {
@@ -453,8 +479,9 @@ summary:focus-visible {
 }
 
 .hero-purpose-title {
-  font-size: clamp(1.5rem, 2.2vw, 1.9rem);
-  line-height: 1.02;
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.3;
 }
 
 .hero-usecases-header,
@@ -506,8 +533,9 @@ summary:focus-visible {
 }
 
 .compact-section-heading h2 {
-  font-size: clamp(1.7rem, 2.5vw, 2.15rem);
-  line-height: 1.02;
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.3;
 }
 
 .report-topbar,
@@ -521,6 +549,7 @@ summary:focus-visible {
 
 .timeline-day-key,
 .report-summary-card span,
+.metric-label,
 .jump-card span,
 .pattern-card span,
 .moment-topline span,
@@ -531,11 +560,17 @@ summary:focus-visible {
 }
 
 .report-summary-card span,
+.metric-label,
 .jump-card span,
 .pattern-card span,
 .timeline-day-key {
   color: var(--muted);
   font-size: 0.88rem;
+}
+
+.metric-label {
+  color: #a1a1aa;
+  font-size: 12px;
 }
 
 .formats-grid {
@@ -600,11 +635,11 @@ summary:focus-visible {
 }
 
 .section-kicker {
-  margin-bottom: 12px;
-  color: #9d7b33;
+  margin-bottom: 8px;
+  color: #a1a1aa;
   text-transform: uppercase;
-  letter-spacing: 0.16em;
-  font-size: 0.76rem;
+  letter-spacing: 1.5px;
+  font-size: 11px;
   font-weight: 700;
 }
 
@@ -803,10 +838,11 @@ summary:focus-visible {
 .entry-kicker,
 .start-guidance-note {
   margin-top: 14px;
-  color: var(--accent-deep);
-  font-size: 0.78rem;
+  margin-bottom: 8px;
+  color: #a1a1aa;
+  font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.14em;
+  letter-spacing: 1.5px;
   text-transform: uppercase;
 }
 
@@ -1018,6 +1054,96 @@ summary:focus-visible {
   padding: 46px 34px;
 }
 
+.paywall {
+  max-width: 520px;
+  margin: 0 auto;
+  text-align: center;
+  padding: clamp(30px, 4vw, 40px);
+  border-radius: 30px;
+  background:
+    linear-gradient(180deg, rgba(18, 18, 22, 0.96), rgba(11, 11, 14, 0.92)),
+    var(--card);
+  display: grid;
+  gap: 18px;
+}
+
+.label {
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  color: #a1a1aa;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.headline {
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.subhead {
+  color: #a1a1aa;
+  margin-top: 8px;
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+.divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #c6a96b, transparent);
+  opacity: 0.5;
+}
+
+.preview-points {
+  display: grid;
+  text-align: left;
+  margin: 20px 0;
+  color: #d4d4d8;
+  font-size: 0.98rem;
+  line-height: 1.8;
+}
+
+.price-block {
+  display: grid;
+  gap: 4px;
+  margin: 24px 0;
+}
+
+.price {
+  font-size: 32px;
+  line-height: 1;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.price-note,
+.trust-line {
+  color: var(--muted);
+}
+
+.price-note {
+  font-size: 12px;
+  color: #a1a1aa;
+}
+
+.paywall-actions {
+  display: grid;
+  gap: 12px;
+}
+
+.paywall-actions .primary-button,
+.paywall-actions .secondary-button {
+  width: 100%;
+}
+
+.trust-line {
+  margin-top: 16px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #71717a;
+}
+
 .loading-mark {
   display: inline-flex;
   gap: 10px;
@@ -1086,12 +1212,19 @@ summary:focus-visible {
 }
 
 .report-summary-card strong,
+.metric-value,
 .jump-card strong,
 .pattern-card strong {
   display: block;
   margin-top: 8px;
   font-size: 1.2rem;
+  font-weight: 600;
   line-height: 1.35;
+}
+
+.metric-value {
+  font-size: 24px;
+  font-weight: 600;
 }
 
 .report-section {
@@ -1152,10 +1285,10 @@ summary:focus-visible {
 }
 
 .jump-card-label {
-  color: var(--accent);
+  color: #a1a1aa;
   text-transform: uppercase;
-  letter-spacing: 0.14em;
-  font-size: 0.76rem;
+  letter-spacing: 1.5px;
+  font-size: 11px;
   font-weight: 700;
 }
 
@@ -1304,11 +1437,15 @@ summary:focus-visible {
 
 .moment-topline span:first-child,
 .wonder-label {
-  color: var(--accent);
+  color: #a1a1aa;
   text-transform: uppercase;
-  letter-spacing: 0.15em;
-  font-size: 0.74rem;
+  letter-spacing: 1.5px;
+  font-size: 11px;
   font-weight: 700;
+}
+
+.wonder-label {
+  margin-bottom: 8px;
 }
 
 .strength-pill {
@@ -1503,7 +1640,8 @@ summary:focus-visible {
 
 .footer-divider {
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(245, 241, 234, 0.16), transparent);
+  background: linear-gradient(90deg, transparent, #c6a96b, transparent);
+  opacity: 0.5;
 }
 
 .site-footer-copy {
