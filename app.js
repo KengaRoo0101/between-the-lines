@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "https://esm.sh/react@18.3.1";
 import { createRoot } from "https://esm.sh/react-dom@18.3.1/client";
 import htm from "https://esm.sh/htm@3.1.1";
+import { analyzeInline, analyzeUpload, createCheckoutSession, getConfig, getPaymentStatus } from "./apiClient.js";
 
 const html = htm.bind(React.createElement);
 
@@ -2118,8 +2119,7 @@ function App() {
   }, []);
 
   useEffect(() => {
-    fetch("/api/config")
-      .then((response) => response.json())
+    getConfig()
       .then((data) => {
         setDefaultRules(data.rules);
         setStatus(DEFAULT_STATUS);
@@ -2193,14 +2193,7 @@ function App() {
     (async () => {
       try {
         for (let attempt = 0; attempt < 12; attempt += 1) {
-          const response = await fetch(`/payment-status?session_id=${encodeURIComponent(sessionId)}`, {
-            cache: "no-store",
-          });
-          const data = await response.json().catch(() => ({}));
-
-          if (!response.ok) {
-            throw new Error(data.error || "The checkout session could not be verified.");
-          }
+          const data = await getPaymentStatus(sessionId);
 
           if (data.paid) {
             if (cancelled) return;
@@ -2350,41 +2343,23 @@ function App() {
     });
 
     try {
-      let response;
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-      if (nextSource.file) {
-        const body = new FormData();
-        body.append("file", nextSource.file);
-        body.append("rules", JSON.stringify(defaultRules));
-        body.append("timezone", timezone);
-        body.append("researchConsent", hasResearchConsent ? "true" : "false");
-        body.append("uploadRightsConfirmed", nextSource.isSample ? "false" : "true");
-
-        response = await fetch("/upload", {
-          method: "POST",
-          body,
-        });
-      } else {
-        response = await fetch("/api/analyze", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
+      const data = nextSource.file
+        ? await analyzeUpload({
+            file: nextSource.file,
+            rules: defaultRules,
+            timezone,
+            researchConsent: hasResearchConsent,
+            uploadRightsConfirmed: !nextSource.isSample,
+          })
+        : await analyzeInline({
             filename: nextSource.name,
             content: nextSource.content,
             rules: defaultRules,
             timezone,
             researchConsent: hasResearchConsent,
-          }),
-        });
-      }
-
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || "Analysis failed.");
-      }
+          });
 
       const safeSource = {
         name: nextSource.name,
@@ -2558,17 +2533,7 @@ function App() {
     });
 
     try {
-      const response = await fetch("/create-checkout-session", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok || !data.url) {
-        throw new Error(data.error || "The checkout session could not be created.");
-      }
+      const data = await createCheckoutSession();
 
       window.location.assign(data.url);
     } catch (error) {

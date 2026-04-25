@@ -15,6 +15,7 @@ Open `http://localhost:3000`.
 
 - `server.js`: Express server and API routes (`/api/config`, `/api/analyze`, `/upload`, payments, analytics)
 - `app.js`: client-side React app (ES module) rendered directly in the browser
+- `apiClient.js`: browser API helper functions used by the app
 - `index.html`: static shell that loads `app.js`
 - `styles.css`: global styling and print styles
 - `anomalyRules.js`: default thresholds and rule-override merge
