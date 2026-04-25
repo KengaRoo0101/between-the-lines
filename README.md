@@ -1,25 +1,37 @@
-# Signal Report
+# Between The Lines
 
-Single-session React + Node web app for uploading a JSON or CSV message export, normalizing the records, running rule-based anomaly detection, and formatting a PDF-ready report.
+Single-session React + Node web app for uploading a JSON or CSV message export, normalizing records, running rule-based anomaly detection, and producing a PDF-ready report view.
 
 ## Run
 
 ```bash
-node server.js
+npm install
+npm start
 ```
 
 Open `http://localhost:3000`.
 
 ## Structure
 
-- `server.js`: Node server and JSON API
-- `src/config/anomalyRules.js`: default rule thresholds
-- `src/lib/parseUpload.js`: JSON/CSV parsing and field mapping
-- `src/lib/normalizeMessages.js`: normalization, sorting, deduping, data-quality notes
-- `src/lib/analyzeMessages.js`: anomaly detection and visual summary data
-- `src/lib/buildReport.js`: report section builder
-- `samples/`: sample JSON and CSV datasets
+- `server.js`: Express server and API routes (`/api/config`, `/api/analyze`, `/upload`, payments, analytics)
+- `app.js`: client-side React app (ES module) rendered directly in the browser
+- `index.html`: static shell that loads `app.js`
+- `styles.css`: global styling and print styles
+- `anomalyRules.js`: default thresholds and rule-override merge
+- `parseUpload.js`: JSON/CSV parsing and field mapping
+- `normalizeMessages.js`: normalization, sorting, deduping, and data-quality notes
+- `analyzeMessages.js`: rule-based anomaly detection and visual summary data
+- `buildReport.js`: final report payload assembly
+- `csv.js`: lightweight CSV parser
+- `samples/`: sample datasets used for preview mode
+
+## Data flow
+
+1. `parseUpload` reads JSON/CSV and maps source fields.
+2. `normalizeMessages` cleans and deduplicates rows.
+3. `analyzeMessages` applies threshold rules to detect patterns.
+4. `buildReport` creates the final report object consumed by the UI.
 
 ## PDF export
 
-Use the in-app `Export PDF` button. It opens the browser print flow with print styles tuned for Save as PDF.
+Use the in-app **Print / Export PDF** action. The browser print flow is tuned for “Save as PDF”.

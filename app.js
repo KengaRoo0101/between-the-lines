@@ -2461,7 +2461,6 @@ function App() {
   async function handleUseSample() {
     if (!defaultRules) return;
 
-    console.log("Sample button clicked");
     trackEvent("click_sample");
 
     try {
@@ -2471,13 +2470,10 @@ function App() {
       }
 
       const data = await response.json();
-      console.log(data);
       const normalized = normalizeSamplePayload(data);
       const normalizedContent = JSON.stringify(normalized);
       const sampleFile = new File([normalizedContent], SAMPLE_SOURCE.name, { type: "application/json" });
 
-      console.log("Sample loaded");
-      console.log("Sample analysis started");
 
       const success = await analyzeSource({
         name: SAMPLE_SOURCE.name,
