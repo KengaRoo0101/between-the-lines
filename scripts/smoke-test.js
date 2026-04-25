@@ -7,10 +7,9 @@ const { normalizeMessages } = require("../normalizeMessages");
 const { analyzeMessages } = require("../analyzeMessages");
 const { buildReport } = require("../buildReport");
 
-function runSmokeTest() {
-  const filename = "sample-conversation.json";
-  const samplePath = path.join(__dirname, "..", "samples", filename);
-  const content = fs.readFileSync(samplePath, "utf-8");
+function buildReportFromFixture({ filename, relativePath }) {
+  const fixturePath = path.join(__dirname, "..", relativePath);
+  const content = fs.readFileSync(fixturePath, "utf-8");
   const timezone = "UTC";
 
   const parsedUpload = parseUpload({ filename, content, timezone });
@@ -27,19 +26,37 @@ function runSmokeTest() {
     },
   });
 
+  return report;
+}
+
+function assertReportShape(report, label) {
   if (!report?.metadata?.sourceName) {
-    throw new Error("Smoke test failed: metadata.sourceName missing.");
+    throw new Error(`Smoke test failed (${label}): metadata.sourceName missing.`);
   }
 
   if (!Array.isArray(report.groupedFindings)) {
-    throw new Error("Smoke test failed: groupedFindings missing.");
+    throw new Error(`Smoke test failed (${label}): groupedFindings missing.`);
   }
 
   if (!Array.isArray(report.chronology) || report.chronology.length === 0) {
-    throw new Error("Smoke test failed: chronology is empty.");
+    throw new Error(`Smoke test failed (${label}): chronology is empty.`);
   }
+}
 
-  console.log("Smoke test passed.");
+function runSmokeTest() {
+  const jsonReport = buildReportFromFixture({
+    filename: "sample-conversation.json",
+    relativePath: "samples/sample-conversation.json",
+  });
+  assertReportShape(jsonReport, "json");
+
+  const csvReport = buildReportFromFixture({
+    filename: "sample-conversation.csv",
+    relativePath: "sample-conversation.csv",
+  });
+  assertReportShape(csvReport, "csv");
+
+  console.log("Smoke test passed for JSON and CSV fixtures.");
 }
 
 runSmokeTest();

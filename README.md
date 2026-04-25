@@ -11,6 +11,8 @@ npm start
 
 Open `http://localhost:3000`.
 
+Optional: set `LOG_REQUESTS=true` to print one-line request logs in the server console.
+
 ## Structure
 
 - `server.js`: Express server and API routes (`/api/config`, `/api/analyze`, `/upload`, payments, analytics)

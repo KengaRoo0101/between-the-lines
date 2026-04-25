@@ -37,6 +37,7 @@ const upload = multer({
   },
 });
 const parseJson = express.json({ limit: "6mb" });
+const ENABLE_REQUEST_LOGS = String(process.env.LOG_REQUESTS || "").toLowerCase() === "true";
 
 function paymentsReady() {
   return Boolean(stripe && STRIPE_WEBHOOK_SECRET);
@@ -91,6 +92,19 @@ app.post("/stripe-webhook", express.raw({ type: "application/json" }), (request,
 });
 
 app.use(parseJson);
+
+if (ENABLE_REQUEST_LOGS) {
+  app.use((request, response, next) => {
+    const startedAt = Date.now();
+
+    response.on("finish", () => {
+      const durationMs = Date.now() - startedAt;
+      console.log(`[${new Date().toISOString()}] ${request.method} ${request.originalUrl} ${response.statusCode} ${durationMs}ms`);
+    });
+
+    next();
+  });
+}
 
 function parseRules(value) {
   if (!value) return {};
