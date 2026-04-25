@@ -4,7 +4,8 @@
   "description": "Single-session React + Node web app for uploading a JSON or CSV message export, normalizing the records, running rule-based anomaly detection, and formatting a PDF-ready report.",
   "main": "app.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node scripts/smoke-test.js && node --test tests/api.integration.test.js",
+    "preflight": "node scripts/preflight.js",
     "start": "node server.js",
     "dev": "node server.js"
   },
