@@ -1,4 +1,5 @@
 const path = require("path");
+const crypto = require("crypto");
 const express = require("express");
 const multer = require("multer");
 const Stripe = require("stripe");
@@ -15,6 +16,14 @@ const MAX_UPLOAD_BYTES = 6 * 1024 * 1024;
 const PUBLIC_URL = String(process.env.PUBLIC_URL || `http://localhost:${PORT}`).replace(/\/+$/, "");
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "";
+const ENFORCE_CANONICAL_HOST = String(process.env.ENFORCE_CANONICAL_HOST || "").toLowerCase() === "true";
+const CANONICAL_HOST = (() => {
+  try {
+    return new URL(PUBLIC_URL).host.toLowerCase();
+  } catch {
+    return "";
+  }
+})();
 const ALLOWED_ANALYTICS_EVENTS = new Set([
   "landing_page_view",
   "click_upload",
@@ -25,7 +34,7 @@ const ALLOWED_ANALYTICS_EVENTS = new Set([
   "feedback_clicked",
 ]);
 const analyticsEvents = [];
-const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY) : null;
+let stripeClient = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY) : null;
 const paidCheckoutSessions = new Map();
 
 const app = express();
@@ -37,9 +46,10 @@ const upload = multer({
   },
 });
 const parseJson = express.json({ limit: "6mb" });
+const ENABLE_REQUEST_LOGS = String(process.env.LOG_REQUESTS || "").toLowerCase() === "true";
 
 function paymentsReady() {
-  return Boolean(stripe && STRIPE_WEBHOOK_SECRET);
+  return Boolean(stripeClient && STRIPE_WEBHOOK_SECRET);
 }
 
 function requirePayments(response) {
@@ -62,6 +72,17 @@ function markCheckoutSessionPaid(session) {
   });
 }
 
+function markCheckoutSessionUnpaid(session) {
+  if (!session?.id) return;
+
+  paidCheckoutSessions.set(session.id, {
+    paid: false,
+    paidAt: null,
+    paymentStatus: session.payment_status || "unpaid",
+    checkoutStatus: session.status || "open",
+  });
+}
+
 app.post("/stripe-webhook", express.raw({ type: "application/json" }), (request, response) => {
   if (!paymentsReady()) {
     response.status(503).send("Payments are not configured.");
@@ -77,20 +98,63 @@ app.post("/stripe-webhook", express.raw({ type: "application/json" }), (request,
   let event;
 
   try {
-    event = stripe.webhooks.constructEvent(request.body, signature, STRIPE_WEBHOOK_SECRET);
+    event = stripeClient.webhooks.constructEvent(request.body, signature, STRIPE_WEBHOOK_SECRET);
   } catch (error) {
     response.status(400).send(`Webhook Error: ${error.message}`);
     return;
   }
 
-  if (event.type === "checkout.session.completed") {
+  if (event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded") {
     markCheckoutSessionPaid(event.data.object);
+  }
+
+  if (event.type === "checkout.session.async_payment_failed") {
+    markCheckoutSessionUnpaid(event.data.object);
   }
 
   response.json({ received: true });
 });
 
 app.use(parseJson);
+
+app.use((request, response, next) => {
+  const requestId = crypto.randomUUID();
+  request.requestId = requestId;
+  response.set("X-Request-Id", requestId);
+  next();
+});
+
+if (ENFORCE_CANONICAL_HOST && CANONICAL_HOST && !CANONICAL_HOST.includes("localhost")) {
+  app.use((request, response, next) => {
+    const method = request.method.toUpperCase();
+    if (method !== "GET" && method !== "HEAD") {
+      next();
+      return;
+    }
+
+    const requestHost = String(request.get("host") || "").toLowerCase();
+    if (!requestHost || requestHost === CANONICAL_HOST) {
+      next();
+      return;
+    }
+
+    const redirectUrl = `${PUBLIC_URL}${request.originalUrl || "/"}`;
+    response.redirect(301, redirectUrl);
+  });
+}
+
+if (ENABLE_REQUEST_LOGS) {
+  app.use((request, response, next) => {
+    const startedAt = Date.now();
+
+    response.on("finish", () => {
+      const durationMs = Date.now() - startedAt;
+      console.log(`[${new Date().toISOString()}] [${request.requestId}] ${request.method} ${request.originalUrl} ${response.statusCode} ${durationMs}ms`);
+    });
+
+    next();
+  });
+}
 
 function parseRules(value) {
   if (!value) return {};
@@ -225,6 +289,14 @@ app.get("/api/config", (_request, response) => {
   response.json({ rules: defaultRules });
 });
 
+app.get("/healthz", (_request, response) => {
+  response.status(200).json({
+    ok: true,
+    service: "between-the-lines",
+    now: new Date().toISOString(),
+  });
+});
+
 app.get("/api/analytics", (_request, response) => {
   response.json({
     events: analyticsEvents,
@@ -282,7 +354,7 @@ app.post("/create-checkout-session", async (_request, response, next) => {
   if (!requirePayments(response)) return;
 
   try {
-    const session = await stripe.checkout.sessions.create({
+    const session = await stripeClient.checkout.sessions.create({
       mode: "payment",
       line_items: [
         {
@@ -322,7 +394,25 @@ app.get("/payment-status", async (request, response, next) => {
       return;
     }
 
-    const sessionStatus = paidCheckoutSessions.get(sessionId);
+    let sessionStatus = paidCheckoutSessions.get(sessionId);
+
+    if (!sessionStatus) {
+      try {
+        const liveSession = await stripeClient.checkout.sessions.retrieve(sessionId);
+        if (liveSession?.id) {
+          sessionStatus = {
+            paid: liveSession.payment_status === "paid",
+            paidAt: null,
+            paymentStatus: liveSession.payment_status || "unpaid",
+            checkoutStatus: liveSession.status || "pending",
+          };
+          paidCheckoutSessions.set(liveSession.id, sessionStatus);
+        }
+      } catch {
+        sessionStatus = null;
+      }
+    }
+
     response.json({
       paid: Boolean(sessionStatus?.paid),
       status: sessionStatus?.checkoutStatus || "pending",
@@ -346,16 +436,39 @@ app.use((request, response) => {
     return;
   }
 
-  response.status(404).json({ error: "Not found" });
+  response.status(404).json({
+    error: "Not found",
+    requestId: request.requestId,
+  });
 });
 
 app.use((error, _request, response, _next) => {
   const status = error instanceof multer.MulterError ? 400 : 400;
   response.status(status).json({
     error: userSafeErrorMessage(error),
+    requestId: _request.requestId,
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`Between The Lines app running at http://localhost:${PORT}`);
-});
+function startServer(port = PORT) {
+  const server = app.listen(port, () => {
+    const address = server.address();
+    const resolvedPort = typeof address === "object" && address ? address.port : port;
+    console.log(`Between The Lines app running at http://localhost:${resolvedPort}`);
+  });
+  return server;
+}
+
+function setStripeClientForTesting(client) {
+  stripeClient = client;
+}
+
+if (require.main === module) {
+  startServer();
+}
+
+module.exports = {
+  app,
+  startServer,
+  setStripeClientForTesting,
+};
