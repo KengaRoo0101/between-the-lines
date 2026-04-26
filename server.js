@@ -1,4 +1,5 @@
 const path = require("path");
+const crypto = require("crypto");
 const express = require("express");
 const multer = require("multer");
 const Stripe = require("stripe");
@@ -15,6 +16,14 @@ const MAX_UPLOAD_BYTES = 6 * 1024 * 1024;
 const PUBLIC_URL = String(process.env.PUBLIC_URL || `http://localhost:${PORT}`).replace(/\/+$/, "");
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "";
+const ENFORCE_CANONICAL_HOST = String(process.env.ENFORCE_CANONICAL_HOST || "").toLowerCase() === "true";
+const CANONICAL_HOST = (() => {
+  try {
+    return new URL(PUBLIC_URL).host.toLowerCase();
+  } catch {
+    return "";
+  }
+})();
 const ALLOWED_ANALYTICS_EVENTS = new Set([
   "landing_page_view",
   "click_upload",
@@ -93,6 +102,32 @@ app.post("/stripe-webhook", express.raw({ type: "application/json" }), (request,
 
 app.use(parseJson);
 
+app.use((request, response, next) => {
+  const requestId = crypto.randomUUID();
+  request.requestId = requestId;
+  response.set("X-Request-Id", requestId);
+  next();
+});
+
+if (ENFORCE_CANONICAL_HOST && CANONICAL_HOST && !CANONICAL_HOST.includes("localhost")) {
+  app.use((request, response, next) => {
+    const method = request.method.toUpperCase();
+    if (method !== "GET" && method !== "HEAD") {
+      next();
+      return;
+    }
+
+    const requestHost = String(request.get("host") || "").toLowerCase();
+    if (!requestHost || requestHost === CANONICAL_HOST) {
+      next();
+      return;
+    }
+
+    const redirectUrl = `${PUBLIC_URL}${request.originalUrl || "/"}`;
+    response.redirect(301, redirectUrl);
+  });
+}
+
 if (ENABLE_REQUEST_LOGS) {
   app.use((request, response, next) => {
     const startedAt = Date.now();
@@ -100,6 +135,7 @@ if (ENABLE_REQUEST_LOGS) {
     response.on("finish", () => {
       const durationMs = Date.now() - startedAt;
       console.log(`[${new Date().toISOString()}] ${request.method} ${request.originalUrl} ${response.statusCode} ${durationMs}ms`);
+      console.log(`[${new Date().toISOString()}] [${request.requestId}] ${request.method} ${request.originalUrl} ${response.statusCode} ${durationMs}ms`);
     });
 
     next();
@@ -239,6 +275,14 @@ app.get("/api/config", (_request, response) => {
   response.json({ rules: defaultRules });
 });
 
+app.get("/healthz", (_request, response) => {
+  response.status(200).json({
+    ok: true,
+    service: "between-the-lines",
+    now: new Date().toISOString(),
+  });
+});
+
 app.get("/api/analytics", (_request, response) => {
   response.json({
     events: analyticsEvents,
@@ -360,16 +404,34 @@ app.use((request, response) => {
     return;
   }
 
-  response.status(404).json({ error: "Not found" });
+  response.status(404).json({
+    error: "Not found",
+    requestId: request.requestId,
+  });
 });
 
 app.use((error, _request, response, _next) => {
   const status = error instanceof multer.MulterError ? 400 : 400;
   response.status(status).json({
     error: userSafeErrorMessage(error),
+    requestId: _request.requestId,
   });
 });
 
-app.listen(PORT, () => {
-  console.log(`Between The Lines app running at http://localhost:${PORT}`);
-});
+function startServer(port = PORT) {
+  const server = app.listen(port, () => {
+    const address = server.address();
+    const resolvedPort = typeof address === "object" && address ? address.port : port;
+    console.log(`Between The Lines app running at http://localhost:${resolvedPort}`);
+  });
+  return server;
+}
+
+if (require.main === module) {
+  startServer();
+}
+
+module.exports = {
+  app,
+  startServer,
+};

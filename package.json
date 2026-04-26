@@ -5,6 +5,8 @@
   "main": "app.js",
   "scripts": {
     "test": "node scripts/smoke-test.js",
+    "test": "node scripts/smoke-test.js && node --test tests/api.integration.test.js",
+    "preflight": "node scripts/preflight.js",
     "start": "node server.js",
     "dev": "node server.js"
   },
