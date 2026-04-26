@@ -134,6 +134,7 @@ if (ENABLE_REQUEST_LOGS) {
 
     response.on("finish", () => {
       const durationMs = Date.now() - startedAt;
+      console.log(`[${new Date().toISOString()}] ${request.method} ${request.originalUrl} ${response.statusCode} ${durationMs}ms`);
       console.log(`[${new Date().toISOString()}] [${request.requestId}] ${request.method} ${request.originalUrl} ${response.statusCode} ${durationMs}ms`);
     });
 
