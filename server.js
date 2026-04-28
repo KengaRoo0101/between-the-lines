@@ -419,7 +419,7 @@ app.use((error, _request, response, _next) => {
 });
 
 function startServer(port = PORT) {
-  const server = 423,1: app.listen(PORT, "0.0.0.0", callback)
+  const server = app.listen(port, "0.0.0.0", () => {
     const address = server.address();
     const resolvedPort = typeof address === "object" && address ? address.port : port;
     console.log(`Between The Lines app running at http://localhost:${resolvedPort}`);
