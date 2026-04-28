@@ -6,8 +6,8 @@ services:
     startCommand: node server.js
     envVars:
       - key: PUBLIC_URL
-        value: https://www.lrcpropertyllc.com
+        value: https://between-the-lines-po4k.onrender.com
       - key: ENFORCE_CANONICAL_HOST
-        value: "true"
+        value: "false"
       - key: LOG_REQUESTS
         value: "true"
