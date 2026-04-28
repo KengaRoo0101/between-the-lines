@@ -9,6 +9,9 @@
     "preflight": "node scripts/preflight.js",
     "test": "node scripts/smoke-test.js && node --test tests/api.integration.test.js"
   },
+  "engines": {
+    "node": ">=20"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
