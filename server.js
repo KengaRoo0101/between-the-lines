@@ -178,7 +178,7 @@ app.use(express.json({ limit: "6mb" }));
 app.use((request, response, next) => {
   request.requestId = crypto.randomUUID();
   response.set("X-Request-Id", request.requestId);
-  response.set("X-BTL-Server", "between-the-lines");
+  response.set("X-LRC-Platform", "formed");
   next();
 });
 
@@ -196,7 +196,7 @@ if (ENABLE_REQUEST_LOGS) {
 // Canonical host redirects are intentionally disabled until the product subdomain is confirmed stable.
 
 app.get("/healthz", (_request, response) => {
-  response.status(200).json({ ok: true, service: "between-the-lines", now: new Date().toISOString() });
+  response.status(200).json({ ok: true, service: "formed-platform", now: new Date().toISOString() });
 });
 
 app.get("/api/config", (_request, response) => {
@@ -257,8 +257,8 @@ app.post("/create-checkout-session", async (_request, response, next) => {
         },
         quantity: 1,
       }],
-      success_url: `${PUBLIC_URL}/?paid=success&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${PUBLIC_URL}/?paid=cancelled`,
+      success_url: `${PUBLIC_URL}/between-the-lines?paid=success&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${PUBLIC_URL}/between-the-lines?paid=cancelled`,
     });
     response.json({ url: session.url });
   } catch (error) {
@@ -293,11 +293,19 @@ app.use("/samples", express.static(path.join(ROOT_DIR, "samples"), {
   },
 }));
 
-app.use(express.static(ROOT_DIR, { extensions: ["html"], index: "index.html" }));
+app.get(["/", "/formed"], (_request, response) => {
+  response.sendFile(path.join(ROOT_DIR, "formed.html"));
+});
+
+app.get("/between-the-lines", (_request, response) => {
+  response.sendFile(path.join(ROOT_DIR, "index.html"));
+});
+
+app.use(express.static(ROOT_DIR, { extensions: ["html"], index: false }));
 
 app.use((request, response) => {
   if (request.accepts("html")) {
-    response.status(404).sendFile(path.join(ROOT_DIR, "index.html"));
+    response.status(404).sendFile(path.join(ROOT_DIR, "formed.html"));
     return;
   }
   response.status(404).json({ error: "Not found", requestId: request.requestId });
@@ -312,7 +320,7 @@ function startServer(port = PORT) {
   const server = app.listen(port, "0.0.0.0", () => {
     const address = server.address();
     const resolvedPort = typeof address === "object" && address ? address.port : port;
-    console.log(`Between The Lines app running at http://localhost:${resolvedPort}`);
+    console.log(`Formed platform running at http://localhost:${resolvedPort}`);
   });
   return server;
 }
