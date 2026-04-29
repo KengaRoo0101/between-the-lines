@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Legal & Trust | LRC Property LLC</title>
+    <meta name="description" content="Legal, privacy, refund, and data retention information for Formed. and Between The Lines by LRC Property LLC." />
+    <link rel="stylesheet" href="/formed.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="/" aria-label="Formed home">
+        <span class="brand-mark">F.</span>
+        <span>
+          <strong>Formed.</strong>
+          <small>by LRC Property LLC</small>
+        </span>
+      </a>
+      <nav aria-label="Primary navigation">
+        <a href="/">Formed</a>
+        <a href="/between-the-lines">Between The Lines</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+      </nav>
+    </header>
+
+    <main class="section-shell legal-shell">
+      <section class="legal-panel" data-page="terms">
+        <p class="eyebrow">Legal & trust</p>
+        <h1>Terms of Use</h1>
+        <p class="hero-text">These terms are a plain-language operating draft for LRC Property LLC, Formed., and Between The Lines. They should be reviewed by a qualified attorney before being treated as final legal terms.</p>
+        <div class="legal-grid">
+          <article>
+            <h2>Use of the service</h2>
+            <p>These tools are provided to help users organize information, generate structured reports, and create practical next-step outputs. Users are responsible for the accuracy, legality, and appropriateness of the information they upload or submit.</p>
+          </article>
+          <article>
+            <h2>No professional advice</h2>
+            <p>Reports, checklists, templates, and generated outputs are informational tools. They are not legal, financial, medical, investigative, or professional advice.</p>
+          </article>
+          <article>
+            <h2>User responsibility</h2>
+            <p>Do not upload information you do not have the right to use. Do not use the service to harass, stalk, defame, impersonate, exploit, or harm another person.</p>
+          </article>
+          <article>
+            <h2>Payments</h2>
+            <p>Paid products may include reports, exports, templates, guided workflows, or services. Financial actions by the business owner require explicit approval before they are caused or executed.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="legal-panel" data-page="privacy">
+        <p class="eyebrow">Legal & trust</p>
+        <h1>Privacy Policy</h1>
+        <p class="hero-text">The platform should collect only what is needed to produce requested outputs, operate the service, improve product quality, and understand which features users find useful.</p>
+        <div class="legal-grid">
+          <article>
+            <h2>Information submitted by users</h2>
+            <p>Users may submit files, text, metadata, and workflow selections. This information is used to generate the requested output and operate the service.</p>
+          </article>
+          <article>
+            <h2>Product analytics</h2>
+            <p>The service may collect event data such as page views, sample clicks, upload starts, report completions, and payment status signals to improve reliability and conversion.</p>
+          </article>
+          <article>
+            <h2>Data improvement</h2>
+            <p>Where appropriate and consented, aggregated or anonymized patterns may be used to improve tools and develop future products. Raw sensitive uploads should not be treated as the default monetization asset.</p>
+          </article>
+          <article>
+            <h2>Third-party services</h2>
+            <p>The platform may use hosting, payment, analytics, and infrastructure providers. These providers may process information as needed to deliver the service.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="legal-panel" data-page="refunds">
+        <p class="eyebrow">Legal & trust</p>
+        <h1>Refund Policy</h1>
+        <p class="hero-text">This draft refund policy is intended to support simple digital-product transactions while the platform is still early.</p>
+        <div class="legal-grid">
+          <article>
+            <h2>Digital reports</h2>
+            <p>Because report outputs may be generated immediately, refunds may be limited once a paid report or export has been delivered.</p>
+          </article>
+          <article>
+            <h2>Failed delivery</h2>
+            <p>If a paid product fails to generate or cannot be delivered due to a platform error, the user should be offered a fix, replacement, or refund path.</p>
+          </article>
+          <article>
+            <h2>Duplicate charges</h2>
+            <p>Duplicate or accidental charges should be reviewed promptly and corrected when verified.</p>
+          </article>
+          <article>
+            <h2>Contact</h2>
+            <p>Refund requests should include the purchase email, approximate purchase time, and a short description of the issue.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="legal-panel" data-page="data-retention">
+        <p class="eyebrow">Legal & trust</p>
+        <h1>Data Retention</h1>
+        <p class="hero-text">The platform should avoid storing sensitive raw uploads longer than needed by default. Retention should be intentional, disclosed, and tied to user value.</p>
+        <div class="legal-grid">
+          <article>
+            <h2>Raw uploads</h2>
+            <p>Raw user files should be temporary or user-controlled unless the user clearly consents to longer storage for saved projects or future access.</p>
+          </article>
+          <article>
+            <h2>Generated outputs</h2>
+            <p>Reports, summaries, metadata, and exports may be retained when needed to provide user access, payment records, support, or product continuity.</p>
+          </article>
+          <article>
+            <h2>Operational logs</h2>
+            <p>Request IDs, error logs, analytics events, and payment status records may be retained for security, debugging, fraud prevention, and service improvement.</p>
+          </article>
+          <article>
+            <h2>Aggregated insights</h2>
+            <p>Aggregated or anonymized product insights may be retained to improve the platform and guide future product development.</p>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>© LRC Property LLC. Draft legal and trust materials require attorney review before launch reliance.</p>
+      <div>
+        <a href="/terms">Terms</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/refunds">Refunds</a>
+        <a href="/data-retention">Data retention</a>
+      </div>
+    </footer>
+
+    <script>
+      const path = window.location.pathname.replace(/^\//, "") || "terms";
+      const panels = document.querySelectorAll(".legal-panel");
+      let active = false;
+      panels.forEach((panel) => {
+        const match = panel.dataset.page === path;
+        panel.hidden = !match;
+        if (match) active = true;
+      });
+      if (!active) {
+        panels[0].hidden = false;
+      }
+      const title = document.querySelector(".legal-panel:not([hidden]) h1")?.textContent;
+      if (title) document.title = `${title} | LRC Property LLC`;
+    </script>
+  </body>
+</html>
