@@ -22,6 +22,26 @@ test.after(async () => {
   });
 });
 
+test("GET / serves the Formed platform landing page", async () => {
+  const response = await fetch(`${baseUrl}/`);
+  assert.equal(response.status, 200);
+  assert.equal(typeof response.headers.get("x-request-id"), "string");
+
+  const html = await response.text();
+  assert.match(html, /<title>Formed\. by LRC Property LLC<\/title>/);
+  assert.match(html, /Move from stuck to structured\./);
+});
+
+test("GET /between-the-lines serves the Between The Lines app shell", async () => {
+  const response = await fetch(`${baseUrl}/between-the-lines`);
+  assert.equal(response.status, 200);
+  assert.equal(typeof response.headers.get("x-request-id"), "string");
+
+  const html = await response.text();
+  assert.match(html, /<title>Between The Lines<\/title>/);
+  assert.match(html, /<div id="root"><\/div>/);
+});
+
 test("GET /api/config returns default rules", async () => {
   const response = await fetch(`${baseUrl}/api/config`);
   assert.equal(response.status, 200);
@@ -40,7 +60,7 @@ test("GET /healthz returns service heartbeat", async () => {
 
   const payload = await response.json();
   assert.equal(payload.ok, true);
-  assert.equal(payload.service, "between-the-lines");
+  assert.equal(payload.service, "formed-platform");
   assert.equal(typeof payload.now, "string");
 });
 
