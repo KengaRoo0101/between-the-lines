@@ -32,6 +32,17 @@ test("GET / serves the Formed platform landing page", async () => {
   assert.match(html, /Move from stuck to structured\./);
 });
 
+test("GET /start serves the free Formed intake flow", async () => {
+  const response = await fetch(`${baseUrl}/start`);
+  assert.equal(response.status, 200);
+  assert.equal(typeof response.headers.get("x-request-id"), "string");
+
+  const html = await response.text();
+  assert.match(html, /<title>Start \| Formed\.<\/title>/);
+  assert.match(html, /Answer a few questions\. Get a structured launch path\./);
+  assert.match(html, /<script src="\/start\.js" defer><\/script>/);
+});
+
 test("GET /between-the-lines serves the Between The Lines app shell", async () => {
   const response = await fetch(`${baseUrl}/between-the-lines`);
   assert.equal(response.status, 200);
