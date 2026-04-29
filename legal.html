@@ -6,6 +6,7 @@
     <title>Legal & Trust | LRC Property LLC</title>
     <meta name="description" content="Legal, privacy, refund, and data retention information for Formed. and Between The Lines by LRC Property LLC." />
     <link rel="stylesheet" href="/formed.css" />
+    <link rel="stylesheet" href="/legal.css" />
   </head>
   <body>
     <header class="site-header">
@@ -133,11 +134,14 @@
     </footer>
 
     <script>
-      const path = window.location.pathname.replace(/^\//, "") || "terms";
+      const params = new URLSearchParams(window.location.search);
+      const queryPage = params.get("page");
+      const slug = window.location.pathname.replace(/^\//, "").replace(/\.html$/, "");
+      const page = queryPage || slug || "terms";
       const panels = document.querySelectorAll(".legal-panel");
       let active = false;
       panels.forEach((panel) => {
-        const match = panel.dataset.page === path;
+        const match = panel.dataset.page === page;
         panel.hidden = !match;
         if (match) active = true;
       });
