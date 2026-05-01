@@ -1,8 +1,19 @@
 # Between The Lines
 
-Single-session React + Node web app for uploading a JSON or CSV message export, normalizing records, running rule-based anomaly detection, and producing a PDF-ready report view.
+Single-session React app for uploading a JSON or CSV message export and generating a report, plus a separate Node/Express payments runtime for Stripe Checkout.
 
-## Run
+## Frontend (GitLab Pages static)
+
+The frontend remains static and can be deployed to GitLab Pages.
+
+`index.html` exposes two optional meta tags used by `apiClient.js`:
+
+- `btl-analysis-api-base`: base URL for analysis endpoints (`/api/config`, `/api/analyze`, `/upload`)
+- `btl-payments-api-base`: base URL for Stripe checkout + entitlement endpoints
+
+If these are empty, the app uses relative paths.
+
+## Analysis runtime
 
 ```bash
 npm install
@@ -14,40 +25,49 @@ Open `http://localhost:3000`.
 Optional: set `LOG_REQUESTS=true` to print one-line request logs in the server console.
 API responses include an `X-Request-Id` header to help trace errors in logs.
 
+## Payments runtime (Stripe + PostgreSQL)
+
+```bash
+npm run start:payments
+```
+
+Required environment variables for the payments runtime:
+
+- `STRIPE_SECRET_KEY`
+- `STRIPE_WEBHOOK_SECRET`
+- `DATABASE_URL`
+- `FRONTEND_BASE_URL` (for success/cancel redirects)
+
+Optional:
+
+- `STRIPE_PRICE_ID` (if omitted, the runtime uses inline USD 12.00 price data)
+
+### Webhook source of truth
+
+Paid access is granted only by Stripe webhook events (`checkout.session.completed` and `checkout.session.async_payment_succeeded`) persisted in PostgreSQL. The redirect query string is only used to know which `report_id` to poll.
+
+### PostgreSQL tables
+
+The payments runtime auto-creates:
+
+- `report_entitlements`
+- `processed_webhook_events`
+
+`processed_webhook_events` is used for idempotent webhook processing.
+
 ## Tests
 
 ```bash
 npm test
 ```
 
-Runs the pipeline smoke test plus API integration tests for `/api/config`, `/api/analyze`, `/upload`, and the unconfigured-payments checkout path.
-
-## Launch preflight
-
-```bash
-npm run preflight
-```
-
-Checks that `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and `PUBLIC_URL` are set and that `PUBLIC_URL` is valid HTTPS.
-For go-live it also requires `ENFORCE_CANONICAL_HOST=true`, a non-localhost `PUBLIC_URL`, and a non-test Stripe secret key (unless `ALLOW_TEST_KEYS=true`).
-
-## Custom domain setup
-
-If you bought a domain and want checkout redirects to use it:
-
-1. Add your domain in Render custom domains for this service.
-2. Point your DNS records to Render (per Render’s dashboard instructions).
-3. Set `PUBLIC_URL=https://www.lrcpropertyllc.com` in your environment variables.
-4. Set `ENFORCE_CANONICAL_HOST=true` if you want the app to 301-redirect browser GET/HEAD traffic to `PUBLIC_URL`.
-5. Keep `lrcpropertyllc.com` as a redirect to `www.lrcpropertyllc.com` so one canonical host is used.
-6. Redeploy so Stripe success/cancel URLs use the new host.
-
-For production checks, use `GET /healthz` to verify the service is up.
+Runs the smoke test plus API integration tests for `/api/config`, `/api/analyze`, `/upload`, and the legacy unconfigured-payments checkout route.
 
 ## Structure
 
-- `server.js`: Express server and API routes (`/api/config`, `/api/analyze`, `/upload`, payments, analytics)
-- `app.js`: client-side React app (ES module) rendered directly in the browser
+- `server.js`: analysis/runtime server and API routes
+- `payments-runtime.js`: separate Stripe Checkout + webhook + entitlement runtime
+- `app.js`: client-side React app rendered directly in the browser
 - `apiClient.js`: browser API helper functions used by the app
 - `index.html`: static shell that loads `app.js`
 - `styles.css`: global styling and print styles
@@ -58,14 +78,3 @@ For production checks, use `GET /healthz` to verify the service is up.
 - `buildReport.js`: final report payload assembly
 - `csv.js`: lightweight CSV parser
 - `samples/`: sample datasets used for preview mode
-
-## Data flow
-
-1. `parseUpload` reads JSON/CSV and maps source fields.
-2. `normalizeMessages` cleans and deduplicates rows.
-3. `analyzeMessages` applies threshold rules to detect patterns.
-4. `buildReport` creates the final report object consumed by the UI.
-
-## PDF export
-
-Use the in-app **Print / Export PDF** action. The browser print flow is tuned for “Save as PDF”.

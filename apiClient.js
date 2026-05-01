@@ -1,3 +1,19 @@
+function resolveBaseUrl(envKey, fallbackPath = "") {
+  if (typeof window === "undefined") return fallbackPath;
+
+  const raw = window.__BTL_CONFIG__?.[envKey] || "";
+  if (!raw) return fallbackPath;
+  return String(raw).replace(/\/+$/, "");
+}
+
+const ANALYSIS_API_BASE = resolveBaseUrl("analysisApiBase", "");
+const PAYMENTS_API_BASE = resolveBaseUrl("paymentsApiBase", "");
+
+function buildUrl(base, path) {
+  if (!base) return path;
+  return `${base}${path}`;
+}
+
 async function parseJsonSafe(response) {
   try {
     return await response.json();
@@ -7,7 +23,7 @@ async function parseJsonSafe(response) {
 }
 
 export async function getConfig() {
-  const response = await fetch("/api/config");
+  const response = await fetch(buildUrl(ANALYSIS_API_BASE, "/api/config"));
   const data = await parseJsonSafe(response);
   if (!response.ok) {
     throw new Error(data.error || "The app could not load default rules.");
@@ -15,13 +31,14 @@ export async function getConfig() {
   return data;
 }
 
-export async function getPaymentStatus(sessionId) {
-  const response = await fetch(`/payment-status?session_id=${encodeURIComponent(sessionId)}`, {
-    cache: "no-store",
-  });
+export async function getEntitlementStatus(reportId) {
+  const response = await fetch(
+    buildUrl(PAYMENTS_API_BASE, `/api/checkout/entitlement/${encodeURIComponent(reportId)}`),
+    { cache: "no-store" },
+  );
   const data = await parseJsonSafe(response);
   if (!response.ok) {
-    throw new Error(data.error || "The checkout session could not be verified.");
+    throw new Error(data.error || "The entitlement could not be verified.");
   }
   return data;
 }
@@ -40,7 +57,7 @@ export async function analyzeUpload({
   body.append("researchConsent", researchConsent ? "true" : "false");
   body.append("uploadRightsConfirmed", uploadRightsConfirmed ? "true" : "false");
 
-  const response = await fetch("/upload", {
+  const response = await fetch(buildUrl(ANALYSIS_API_BASE, "/upload"), {
     method: "POST",
     body,
   });
@@ -53,7 +70,7 @@ export async function analyzeUpload({
 }
 
 export async function analyzeInline({ filename, content, rules, timezone, researchConsent }) {
-  const response = await fetch("/api/analyze", {
+  const response = await fetch(buildUrl(ANALYSIS_API_BASE, "/api/analyze"), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -74,15 +91,16 @@ export async function analyzeInline({ filename, content, rules, timezone, resear
   return data;
 }
 
-export async function createCheckoutSession() {
-  const response = await fetch("/create-checkout-session", {
+export async function createCheckoutSession(reportId) {
+  const response = await fetch(buildUrl(PAYMENTS_API_BASE, "/api/checkout/session"), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
+    body: JSON.stringify({ reportId }),
   });
   const data = await parseJsonSafe(response);
-  if (!response.ok || !data.url) {
+  if (!response.ok || (!data.checkoutUrl && !data.alreadyPaid)) {
     throw new Error(data.error || "The checkout session could not be created.");
   }
 

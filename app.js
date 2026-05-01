@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "https://esm.sh/react@18.3.1";
 import { createRoot } from "https://esm.sh/react-dom@18.3.1/client";
 import htm from "https://esm.sh/htm@3.1.1";
-import { analyzeInline, analyzeUpload, createCheckoutSession, getConfig, getPaymentStatus } from "./apiClient.js";
+import { analyzeInline, analyzeUpload, createCheckoutSession, getConfig, getEntitlementStatus } from "./apiClient.js";
 
 const html = htm.bind(React.createElement);
 
@@ -259,14 +259,22 @@ function clearReportSession() {
   }
 }
 
+function generateReportId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `rpt_${crypto.randomUUID().replace(/-/g, "")}`;
+  }
+
+  return `rpt_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+}
+
 function cleanupPaymentQuery() {
   if (typeof window === "undefined") return;
 
   const url = new URL(window.location.href);
-  if (!url.searchParams.has("paid") && !url.searchParams.has("session_id")) return;
+  if (!url.searchParams.has("paid") && !url.searchParams.has("report_id")) return;
 
   url.searchParams.delete("paid");
-  url.searchParams.delete("session_id");
+  url.searchParams.delete("report_id");
   window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
 }
 
@@ -2174,10 +2182,10 @@ function App() {
 
     const params = new URLSearchParams(window.location.search);
     const paidState = params.get("paid");
-    const sessionId = params.get("session_id");
+    const reportId = params.get("report_id");
     const snapshot = readReportSession();
 
-    if (paidState !== "success" || !sessionId || !snapshot?.result || snapshot.source?.isSample) {
+    if (paidState !== "success" || !reportId || !snapshot?.result || snapshot.source?.isSample) {
       if (paidState === "cancelled" || paidState === "success") {
         cleanupPaymentQuery();
       }
@@ -2193,7 +2201,7 @@ function App() {
     (async () => {
       try {
         for (let attempt = 0; attempt < 12; attempt += 1) {
-          const data = await getPaymentStatus(sessionId);
+          const data = await getEntitlementStatus(reportId);
 
           if (data.paid) {
             if (cancelled) return;
@@ -2364,6 +2372,7 @@ function App() {
       const safeSource = {
         name: nextSource.name,
         isSample: Boolean(nextSource.isSample),
+        reportId: nextSource.reportId || generateReportId(),
       };
 
       if (nextSource.file && !nextSource.isSample) {
@@ -2526,16 +2535,27 @@ function App() {
       return;
     }
 
-    persistReportSession({
-      ...snapshot,
-      mode,
-      isReportUnlocked: false,
-    });
-
     try {
-      const data = await createCheckoutSession();
+      const reportId = snapshot.source?.reportId || generateReportId();
+      persistReportSession({
+        ...snapshot,
+        source: {
+          ...(snapshot.source || {}),
+          reportId,
+        },
+        mode,
+        isReportUnlocked: false,
+      });
 
-      window.location.assign(data.url);
+      const data = await createCheckoutSession(reportId);
+
+      if (data.alreadyPaid) {
+        setIsReportUnlocked(true);
+        setIsStartingCheckout(false);
+        return;
+      }
+
+      window.location.assign(data.checkoutUrl);
     } catch (error) {
       setCheckoutError(String(error?.message || error || "The checkout session could not be created."));
       setIsStartingCheckout(false);

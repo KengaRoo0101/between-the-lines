@@ -4,10 +4,19 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Between The Lines</title>
+    <meta name="btl-analysis-api-base" content="" />
+    <meta name="btl-payments-api-base" content="" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      (function initBtlConfig() {
+        var analysisApiBase = document.querySelector('meta[name="btl-analysis-api-base"]')?.content || "";
+        var paymentsApiBase = document.querySelector('meta[name="btl-payments-api-base"]')?.content || "";
+        window.__BTL_CONFIG__ = { analysisApiBase: analysisApiBase, paymentsApiBase: paymentsApiBase };
+      })();
+    </script>
     <script type="module" src="/app.js"></script>
   </body>
 </html>
