@@ -1,12 +1,14 @@
 {
   "name": "between-the-lines",
   "version": "1.0.0",
-  "description": "Single-session React + Node web app for uploading a JSON or CSV message export, normalizing the records, running rule-based anomaly detection, and formatting a PDF-ready report.",
+  "description": "Legacy redirect service plus guarded Stripe Checkout payments runtime for the Between The Lines module.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
+    "start:payments": "node payments-runtime.js",
     "preflight": "node scripts/preflight.js",
+    "preflight:payments": "node scripts/preflight.js --payments",
     "test": "node scripts/smoke-test.js && node --test tests/*.test.js"
   },
   "engines": {
@@ -18,6 +20,8 @@
   "type": "commonjs",
   "dependencies": {
     "express": "^5.2.1",
-    "multer": "^2.1.1"
+    "multer": "^2.1.1",
+    "pg": "^8.16.3",
+    "stripe": "^22.1.0"
   }
 }
