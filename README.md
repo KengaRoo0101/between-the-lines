@@ -1,5 +1,6 @@
 # Formed. / Between The Lines
 
+Single-session React app for uploading a JSON or CSV message export and generating a report, plus a separate Node/Express payments runtime for Stripe Checkout.
 Formed. is the flagship platform layer for LRC Property LLC. It is designed as a practical ecosystem for turning ideas, documents, data, and action into structured products and operating systems.
 
 Between The Lines is the first working tool inside that ecosystem: a single-session React + Node web app for uploading a JSON or CSV message export, normalizing records, running rule-based anomaly detection, and producing a PDF-ready report view.
@@ -18,7 +19,18 @@ Between The Lines is the first working tool inside that ecosystem: a single-sess
 - `/samples/sample-conversation.json` serves the sample dataset used by the report demo.
 - `/api/*`, `/upload`, `/create-checkout-session`, and `/payment-status` power the Between The Lines module.
 
-## Run
+## Frontend (GitLab Pages static)
+
+The frontend remains static and can be deployed to GitLab Pages.
+
+`index.html` exposes two optional meta tags used by `apiClient.js`:
+
+- `btl-analysis-api-base`: base URL for analysis endpoints (`/api/config`, `/api/analyze`, `/upload`)
+- `btl-payments-api-base`: base URL for Stripe checkout + entitlement endpoints
+
+If these are empty, the app uses relative paths.
+
+## Analysis runtime
 
 ```bash
 npm install
@@ -30,27 +42,34 @@ Open `http://localhost:3000` for Formed. or `http://localhost:3000/between-the-l
 Optional: set `LOG_REQUESTS=true` to print one-line request logs in the server console.
 API responses include an `X-Request-Id` header to help trace errors in logs.
 
-## Tests
+## Payments runtime (Stripe + PostgreSQL)
 
 ```bash
-npm test
+npm run start:payments
 ```
 
+Required environment variables for the payments runtime:
 Runs the pipeline smoke test plus API integration tests for Formed root routing, Between The Lines routing, `/api/config`, `/api/analyze`, `/upload`, and the unconfigured-payments checkout path.
 
-## Launch preflight
+- `STRIPE_SECRET_KEY`
+- `STRIPE_WEBHOOK_SECRET`
+- `DATABASE_URL`
+- `FRONTEND_BASE_URL` (for success/cancel redirects)
 
-```bash
-npm run preflight
-```
+Optional:
 
-Checks that `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, and `PUBLIC_URL` are set and that `PUBLIC_URL` is valid HTTPS.
-For go-live it also requires `ENFORCE_CANONICAL_HOST=true`, a non-localhost `PUBLIC_URL`, and a non-test Stripe secret key (unless `ALLOW_TEST_KEYS=true`).
+- `STRIPE_PRICE_ID` (if omitted, the runtime uses inline USD 12.00 price data)
 
-## Custom domain setup
+### Webhook source of truth
 
-If you bought a domain and want checkout redirects to use it:
+Paid access is granted only by Stripe webhook events (`checkout.session.completed` and `checkout.session.async_payment_succeeded`) persisted in PostgreSQL. The redirect query string is only used to know which `report_id` to poll.
 
+### PostgreSQL tables
+
+The payments runtime auto-creates:
+
+- `report_entitlements`
+- `processed_webhook_events`
 1. Add your domain in Render custom domains for this service.
 2. Point your DNS records to Render using Render’s dashboard instructions.
 3. Set `PUBLIC_URL=https://www.lrcpropertyllc.com` or the chosen production host in your environment variables.
@@ -58,10 +77,21 @@ If you bought a domain and want checkout redirects to use it:
 5. Keep alternate hostnames redirected to the canonical host so Stripe success/cancel URLs stay consistent.
 6. Redeploy so Stripe success/cancel URLs use the new host.
 
-For production checks, use `GET /healthz` to verify the service is up.
+`processed_webhook_events` is used for idempotent webhook processing.
+
+## Tests
+
+```bash
+npm test
+```
+
+Runs the smoke test plus API integration tests for `/api/config`, `/api/analyze`, `/upload`, and the legacy unconfigured-payments checkout route.
 
 ## Structure
 
+- `server.js`: analysis/runtime server and API routes
+- `payments-runtime.js`: separate Stripe Checkout + webhook + entitlement runtime
+- `app.js`: client-side React app rendered directly in the browser
 - `server.js`: Express server, Formed routing, Between The Lines routing, API routes, payments, and analytics
 - `formed.html`: Formed. platform landing page
 - `formed.css`: Formed. landing page styling
