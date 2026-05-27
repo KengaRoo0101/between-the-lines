@@ -8,6 +8,7 @@ function resolveBaseUrl(envKey, fallbackPath = "") {
 
 const ANALYSIS_API_BASE = resolveBaseUrl("analysisApiBase", "");
 const PAYMENTS_API_BASE = resolveBaseUrl("paymentsApiBase", "");
+const PAYMENTS_ENABLED = typeof window !== "undefined" && window.__BTL_CONFIG__?.paymentsEnabled === true;
 
 function buildUrl(base, path) {
   if (!base) return path;
@@ -32,6 +33,16 @@ export async function getConfig() {
 }
 
 export async function getEntitlementStatus(reportId) {
+  if (!PAYMENTS_ENABLED) {
+    return {
+      reportId,
+      paid: false,
+      status: "held",
+      paymentStatus: "unpaid",
+      mode: "hold",
+    };
+  }
+
   const response = await fetch(
     buildUrl(PAYMENTS_API_BASE, `/api/checkout/entitlement/${encodeURIComponent(reportId)}`),
     { cache: "no-store" },
@@ -41,6 +52,10 @@ export async function getEntitlementStatus(reportId) {
     throw new Error(data.error || "The entitlement could not be verified.");
   }
   return data;
+}
+
+export function arePaymentsEnabled() {
+  return PAYMENTS_ENABLED;
 }
 
 export async function analyzeUpload({
@@ -92,6 +107,10 @@ export async function analyzeInline({ filename, content, rules, timezone, resear
 }
 
 export async function createCheckoutSession(reportId) {
+  if (!PAYMENTS_ENABLED) {
+    throw new Error("Checkout is currently on hold. No payment will be started.");
+  }
+
   const response = await fetch(buildUrl(PAYMENTS_API_BASE, "/api/checkout/session"), {
     method: "POST",
     headers: {

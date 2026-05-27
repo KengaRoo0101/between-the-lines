@@ -1,21 +1,19 @@
 const crypto = require('node:crypto');
 const express = require('express');
-const Stripe = require('stripe');
-const { Pool } = require('pg');
 
 const PORT = Number(process.env.PORT || 8787);
 const FRONTEND_BASE_URL = String(process.env.FRONTEND_BASE_URL || 'http://localhost:3000').replace(/\/+$/, '');
+const PAYMENTS_ENABLED = String(process.env.PAYMENTS_ENABLED || '').toLowerCase() === 'true';
+const OWNER_APPROVED_PAYMENTS = String(process.env.OWNER_APPROVED_PAYMENTS || '').toLowerCase() === 'true';
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || '';
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || '';
 const STRIPE_PRICE_ID = process.env.STRIPE_PRICE_ID || '';
 const DATABASE_URL = process.env.DATABASE_URL || '';
+const PAYMENT_HOLD_MESSAGE = 'Stripe checkout is currently on hold. No payment will be started.';
 
-if (!STRIPE_SECRET_KEY) throw new Error('Missing STRIPE_SECRET_KEY for payments runtime.');
-if (!STRIPE_WEBHOOK_SECRET) throw new Error('Missing STRIPE_WEBHOOK_SECRET for payments runtime.');
-if (!DATABASE_URL) throw new Error('Missing DATABASE_URL for payments runtime.');
+let stripe;
+let db;
 
-const stripe = new Stripe(STRIPE_SECRET_KEY);
-const db = new Pool({ connectionString: DATABASE_URL });
 const app = express();
 
 app.use((request, response, next) => {
@@ -33,8 +31,64 @@ function requireReportId(reportId) {
   return typeof reportId === 'string' && /^[a-zA-Z0-9_-]{10,120}$/.test(reportId);
 }
 
+function paymentsAllowed() {
+  return PAYMENTS_ENABLED && OWNER_APPROVED_PAYMENTS;
+}
+
+function missingPaymentRequirements() {
+  const missing = [];
+  if (!PAYMENTS_ENABLED) missing.push('PAYMENTS_ENABLED=true');
+  if (!OWNER_APPROVED_PAYMENTS) missing.push('OWNER_APPROVED_PAYMENTS=true');
+  if (!STRIPE_SECRET_KEY) missing.push('STRIPE_SECRET_KEY');
+  if (!STRIPE_WEBHOOK_SECRET) missing.push('STRIPE_WEBHOOK_SECRET');
+  if (!DATABASE_URL) missing.push('DATABASE_URL');
+  return missing;
+}
+
+function ensurePaymentClients() {
+  const missing = missingPaymentRequirements();
+  if (missing.length) {
+    const error = new Error(`Payments runtime is held or incomplete. Missing: ${missing.join(', ')}.`);
+    error.status = 503;
+    throw error;
+  }
+
+  if (!stripe || !db) {
+    const Stripe = require('stripe');
+    const { Pool } = require('pg');
+    stripe = new Stripe(STRIPE_SECRET_KEY);
+    db = new Pool({ connectionString: DATABASE_URL });
+  }
+
+  return { stripe, db };
+}
+
+function sendCheckoutHold(response) {
+  response.set('Cache-Control', 'no-store');
+  response.status(503).json({
+    ok: false,
+    available: false,
+    mode: 'hold',
+    error: PAYMENT_HOLD_MESSAGE,
+  });
+}
+
+function entitlementHold(reportId) {
+  return {
+    ok: true,
+    available: false,
+    mode: 'hold',
+    reportId,
+    paid: false,
+    status: 'held',
+    paymentStatus: 'unpaid',
+  };
+}
+
 async function initDb() {
-  await db.query(`
+  const { db: database } = ensurePaymentClients();
+
+  await database.query(`
     CREATE TABLE IF NOT EXISTS report_entitlements (
       report_id TEXT PRIMARY KEY,
       checkout_session_id TEXT UNIQUE,
@@ -48,7 +102,7 @@ async function initDb() {
     );
   `);
 
-  await db.query(`
+  await database.query(`
     CREATE TABLE IF NOT EXISTS processed_webhook_events (
       event_id TEXT PRIMARY KEY,
       processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -58,13 +112,19 @@ async function initDb() {
 
 app.post('/api/checkout/session', express.json({ limit: '200kb' }), async (request, response, next) => {
   try {
+    if (!paymentsAllowed()) {
+      sendCheckoutHold(response);
+      return;
+    }
+
+    const { stripe: stripeClient, db: database } = ensurePaymentClients();
     const reportId = String(request.body?.reportId || '');
     if (!requireReportId(reportId)) {
       response.status(400).json({ error: 'A valid reportId is required.' });
       return;
     }
 
-    const existing = await db.query(
+    const existing = await database.query(
       'SELECT status, payment_status FROM report_entitlements WHERE report_id = $1 LIMIT 1',
       [reportId],
     );
@@ -90,7 +150,7 @@ app.post('/api/checkout/session', express.json({ limit: '200kb' }), async (reque
           },
         ];
 
-    const session = await stripe.checkout.sessions.create({
+    const session = await stripeClient.checkout.sessions.create({
       mode: 'payment',
       line_items: lineItems,
       metadata: {
@@ -100,7 +160,7 @@ app.post('/api/checkout/session', express.json({ limit: '200kb' }), async (reque
       cancel_url: `${FRONTEND_BASE_URL}/?paid=cancelled&report_id=${encodeURIComponent(reportId)}`,
     });
 
-    await db.query(
+    await database.query(
       `INSERT INTO report_entitlements (report_id, checkout_session_id, status, payment_status)
        VALUES ($1, $2, 'pending', 'unpaid')
        ON CONFLICT (report_id)
@@ -125,7 +185,15 @@ app.get('/api/checkout/entitlement/:reportId', async (request, response, next) =
       return;
     }
 
-    const result = await db.query(
+    response.set('Cache-Control', 'no-store');
+
+    if (!paymentsAllowed()) {
+      response.json(entitlementHold(reportId));
+      return;
+    }
+
+    const { db: database } = ensurePaymentClients();
+    const result = await database.query(
       `SELECT report_id, status, payment_status, paid_at
        FROM report_entitlements
        WHERE report_id = $1
@@ -139,7 +207,6 @@ app.get('/api/checkout/entitlement/:reportId', async (request, response, next) =
     }
 
     const row = result.rows[0];
-    response.set('Cache-Control', 'no-store');
     response.json({
       reportId,
       paid: row.status === 'paid',
@@ -153,6 +220,12 @@ app.get('/api/checkout/entitlement/:reportId', async (request, response, next) =
 });
 
 app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (request, response) => {
+  if (!paymentsAllowed()) {
+    sendCheckoutHold(response);
+    return;
+  }
+
+  const { stripe: stripeClient, db: database } = ensurePaymentClients();
   const signature = request.headers['stripe-signature'];
   if (!signature) {
     response.status(400).send('Missing Stripe signature.');
@@ -161,13 +234,13 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
 
   let event;
   try {
-    event = stripe.webhooks.constructEvent(request.body, signature, STRIPE_WEBHOOK_SECRET);
+    event = stripeClient.webhooks.constructEvent(request.body, signature, STRIPE_WEBHOOK_SECRET);
   } catch (error) {
     response.status(400).send(`Webhook Error: ${error.message}`);
     return;
   }
 
-  const client = await db.connect();
+  const client = await database.connect();
   try {
     await client.query('BEGIN');
 
@@ -220,20 +293,46 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
 });
 
 app.get('/healthz', async (_request, response) => {
-  await db.query('SELECT 1');
-  response.status(200).json({ ok: true, service: 'btl-payments-runtime', now: new Date().toISOString() });
+  if (!paymentsAllowed()) {
+    response.status(200).json({
+      ok: true,
+      service: 'btl-payments-runtime',
+      available: false,
+      mode: 'hold',
+      now: new Date().toISOString(),
+    });
+    return;
+  }
+
+  const { db: database } = ensurePaymentClients();
+  await database.query('SELECT 1');
+  response.status(200).json({
+    ok: true,
+    service: 'btl-payments-runtime',
+    available: true,
+    mode: 'live',
+    now: new Date().toISOString(),
+  });
 });
 
 app.use((error, _request, response, _next) => {
   const requestId = crypto.randomUUID();
   console.error(`[${requestId}]`, error);
-  response.status(500).json({ error: 'Internal server error.', requestId });
+  const status = Number(error.status || 500);
+  response.status(status).json({
+    error: status >= 500 ? 'Internal server error.' : error.message,
+    requestId,
+  });
 });
 
 async function start() {
-  await initDb();
+  if (paymentsAllowed()) {
+    await initDb();
+  }
+
   app.listen(PORT, () => {
-    console.log(`BTL payments runtime listening on http://localhost:${PORT}`);
+    const mode = paymentsAllowed() ? 'live' : 'hold';
+    console.log(`BTL payments runtime listening on http://localhost:${PORT}; mode=${mode}`);
   });
 }
 
@@ -244,4 +343,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { app, initDb };
+module.exports = { app, initDb, paymentsAllowed };

@@ -1,10 +1,10 @@
-# Between The Lines production launch checklist
+# Between The Lines hold-safe launch checklist
 
-This locks the intended production structure:
+This checklist keeps the public service live without turning on Stripe.
 
 - `lrcpropertyllc.com` -> LRC Property LLC company landing page
-- `betweenthelines.lrcpropertyllc.com` -> Between The Lines app on Render
-- Stripe Checkout -> paid full-report unlock
+- `betweenthelines.lrcpropertyllc.com` -> Between The Lines redirect/service host if needed
+- Stripe Checkout -> held back, no live checkout
 
 ## 1. Cloudflare DNS
 
@@ -62,62 +62,43 @@ Set these in Render for the app service:
 
 ```txt
 PUBLIC_URL=https://betweenthelines.lrcpropertyllc.com
-STRIPE_SECRET_KEY=sk_live_...
-STRIPE_PRICE_ID=price_...
-STRIPE_WEBHOOK_SECRET=whsec_...
+PAYMENTS_ENABLED=false
+OWNER_APPROVED_PAYMENTS=false
 LOG_REQUESTS=true
 ```
 
-Do not commit secret values to GitHub.
+Do not set `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`, or `STRIPE_WEBHOOK_SECRET` while the hold is active. Do not commit secret values to GitHub.
 
-## 5. Stripe product
+## 5. Stripe hold
 
-Create one product:
-
-```txt
-Product: Between The Lines Full Report
-Pricing: One-time payment
-Starting price: $12.00 or your selected launch price
-```
-
-Copy the Stripe `price_...` value into `STRIPE_PRICE_ID` in Render.
-
-## 6. Stripe webhook
-
-Endpoint:
+Do not create or attach a live Stripe product for this deployment. Checkout endpoints should return hold responses:
 
 ```txt
-https://betweenthelines.lrcpropertyllc.com/stripe-webhook
+POST /create-checkout-session -> 503
+POST /api/checkout/session -> 503
+GET /payment-status -> paid: false, mode: hold
 ```
 
-Events:
+Re-enable payments only in a separate owner-approved change that restores dependencies, secrets, webhook handling, and test-mode checkout verification.
 
-```txt
-checkout.session.completed
-```
-
-Copy the webhook signing secret into `STRIPE_WEBHOOK_SECRET` in Render.
-
-## 7. Smoke tests
+## 6. Smoke tests
 
 After deploy, test:
 
 ```txt
 https://betweenthelines.lrcpropertyllc.com/healthz
-https://betweenthelines.lrcpropertyllc.com/samples/sample-conversation.json
 https://lrcpropertyllc.com
 ```
 
-Then run one test checkout with Stripe test mode before switching to live keys.
+Also confirm checkout creation does not return a Stripe URL.
 
-## 8. Product positioning
+## 7. Product positioning
 
-Use this homepage/payment copy:
+Use this homepage copy without payment language:
 
 ```txt
 Find what others miss.
 Structured analysis. Pattern detection. Behavioral signals.
-Unlock Full Report
 ```
 
 Value bullets:

@@ -1,7 +1,14 @@
 import React, { useEffect, useRef, useState } from "https://esm.sh/react@18.3.1";
 import { createRoot } from "https://esm.sh/react-dom@18.3.1/client";
 import htm from "https://esm.sh/htm@3.1.1";
-import { analyzeInline, analyzeUpload, createCheckoutSession, getConfig, getEntitlementStatus } from "./apiClient.js";
+import {
+  analyzeInline,
+  analyzeUpload,
+  arePaymentsEnabled,
+  createCheckoutSession,
+  getConfig,
+  getEntitlementStatus,
+} from "./apiClient.js";
 
 const html = htm.bind(React.createElement);
 
@@ -1741,6 +1748,8 @@ function LoadingState({ source }) {
 }
 
 function PaywallCard({ onUnlock, onBack, isStartingCheckout, checkoutError }) {
+  const paymentsEnabled = arePaymentsEnabled();
+
   return html`
     <section className="panel paywall no-print" data-reveal>
       <div className="label">REPORT READY</div>
@@ -1760,18 +1769,27 @@ function PaywallCard({ onUnlock, onBack, isStartingCheckout, checkoutError }) {
       </div>
 
       <div className="price-block">
-        <div className="price">$12</div>
-        <div className="price-note">one-time report</div>
+        <div className="price">${paymentsEnabled ? "$12" : "On hold"}</div>
+        <div className="price-note">${paymentsEnabled ? "one-time report" : "checkout disabled"}</div>
       </div>
+
+      ${paymentsEnabled
+        ? null
+        : html`
+            <div className="setup-status" aria-live="polite">
+              <strong>Checkout is currently on hold.</strong>
+              <p>No Stripe payment will be started until LRC explicitly reverses the hold.</p>
+            </div>
+          `}
 
       <div className="paywall-actions">
         <button
           type="button"
           className="primary-button"
           onClick=${onUnlock}
-          disabled=${isStartingCheckout}
+          disabled=${isStartingCheckout || !paymentsEnabled}
         >
-          ${isStartingCheckout ? "Starting checkout..." : "Unlock full report — $12"}
+          ${paymentsEnabled ? (isStartingCheckout ? "Starting checkout..." : "Unlock full report — $12") : "Checkout on hold"}
         </button>
 
         <button type="button" className="secondary-button" onClick=${onBack} disabled=${isStartingCheckout}>
@@ -1790,10 +1808,14 @@ function PaywallCard({ onUnlock, onBack, isStartingCheckout, checkoutError }) {
 
       <p className="trust-line">Private. Your data is not sold. Optional anonymized research only.</p>
 
-      <p className="paywall-legal-copy">
-        Payments are processed by Stripe. Digital reports are generally non-refundable once generated, except where
-        required by law.
-      </p>
+      ${paymentsEnabled
+        ? html`
+            <p className="paywall-legal-copy">
+              Payments are processed by Stripe. Digital reports are generally non-refundable once generated, except
+              where required by law.
+            </p>
+          `
+        : null}
       <${LegalLinks} className="paywall-links" />
     </section>
   `;
@@ -2526,6 +2548,11 @@ function App() {
 
   async function handleUnlockReport() {
     setCheckoutError("");
+    if (!arePaymentsEnabled()) {
+      setCheckoutError("Checkout is currently on hold. No payment will be started.");
+      return;
+    }
+
     setIsStartingCheckout(true);
 
     const snapshot = readReportSession();

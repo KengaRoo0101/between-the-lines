@@ -10,9 +10,10 @@ function pass(message) {
   console.log(`✓ ${message}`);
 }
 
-const requiredVars = ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET", "PUBLIC_URL"];
+const requiredVars = ["PUBLIC_URL"];
 let hasFailure = false;
-const allowTestKeys = String(process.env.ALLOW_TEST_KEYS || "").toLowerCase() === "true";
+const paymentsEnabled = String(process.env.PAYMENTS_ENABLED || "").toLowerCase() === "true";
+const ownerApprovedPayments = String(process.env.OWNER_APPROVED_PAYMENTS || "").toLowerCase() === "true";
 
 requiredVars.forEach((name) => {
   if (!isPresent(process.env[name])) {
@@ -62,12 +63,19 @@ if (isPresent(process.env.PUBLIC_URL)) {
   }
 }
 
-if (isPresent(process.env.STRIPE_SECRET_KEY) && process.env.STRIPE_SECRET_KEY.startsWith("sk_test_") && !allowTestKeys) {
+if (paymentsEnabled || ownerApprovedPayments) {
   hasFailure = true;
-  fail("STRIPE_SECRET_KEY is a test key. Use a live key or set ALLOW_TEST_KEYS=true.");
-} else if (isPresent(process.env.STRIPE_SECRET_KEY)) {
-  pass("STRIPE_SECRET_KEY appears suitable for live use.");
+  fail("Payment hold is active. Leave PAYMENTS_ENABLED and OWNER_APPROVED_PAYMENTS unset or false.");
+} else {
+  pass("Payment hold is active.");
 }
+
+["STRIPE_SECRET_KEY", "STRIPE_PRICE_ID", "STRIPE_WEBHOOK_SECRET"].forEach((name) => {
+  if (isPresent(process.env[name])) {
+    hasFailure = true;
+    fail(`${name} must not be set while the payment hold is active.`);
+  }
+});
 
 if (hasFailure) {
   console.error("\nPreflight checks failed.");

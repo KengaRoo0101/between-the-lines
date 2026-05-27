@@ -7,6 +7,7 @@ const PUBLIC_URL = String(process.env.PUBLIC_URL || "https://www.lrcpropertyllc.
 const REDIRECT_TARGET_PATH = process.env.REDIRECT_TARGET_PATH || "/#paywall";
 const ENABLE_REQUEST_LOGS = String(process.env.LOG_REQUESTS || "").toLowerCase() === "true";
 const ENFORCE_CANONICAL_HOST = String(process.env.ENFORCE_CANONICAL_HOST || "").toLowerCase() === "true";
+const PAYMENT_HOLD_MESSAGE = "Payments are currently on hold. No checkout session was created.";
 
 function safeUrl(value, fallback) {
   try {
@@ -52,10 +53,44 @@ app.get("/healthz", (_request, response) => {
     service: "lrc-btl-redirect",
     canonicalHost: CANONICAL_HOST,
     enforceCanonicalHost: ENFORCE_CANONICAL_HOST,
+    payments: {
+      available: false,
+      mode: "hold",
+    },
     target: REDIRECT_TARGET_URL,
     now: new Date().toISOString(),
   });
 });
+
+function sendCheckoutHold(request, response) {
+  response.status(503).json({
+    ok: false,
+    available: false,
+    mode: "hold",
+    error: PAYMENT_HOLD_MESSAGE,
+    requestId: request.requestId,
+  });
+}
+
+function sendEntitlementHold(request, response) {
+  const reportId = request.params.reportId || request.query.report_id || "";
+  response.status(200).json({
+    ok: true,
+    available: false,
+    mode: "hold",
+    reportId,
+    paid: false,
+    status: "held",
+    paymentStatus: "unpaid",
+    requestId: request.requestId,
+  });
+}
+
+app.post("/create-checkout-session", sendCheckoutHold);
+app.post("/api/checkout/session", sendCheckoutHold);
+app.post("/api/stripe/webhook", sendCheckoutHold);
+app.get("/payment-status", sendEntitlementHold);
+app.get("/api/checkout/entitlement/:reportId", sendEntitlementHold);
 
 app.use((request, response) => {
   const method = request.method.toUpperCase();

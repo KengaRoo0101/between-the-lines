@@ -14,7 +14,11 @@
       (function initBtlConfig() {
         var analysisApiBase = document.querySelector('meta[name="btl-analysis-api-base"]')?.content || "";
         var paymentsApiBase = document.querySelector('meta[name="btl-payments-api-base"]')?.content || "";
-        window.__BTL_CONFIG__ = { analysisApiBase: analysisApiBase, paymentsApiBase: paymentsApiBase };
+        window.__BTL_CONFIG__ = {
+          analysisApiBase: analysisApiBase,
+          paymentsApiBase: paymentsApiBase,
+          paymentsEnabled: false,
+        };
       })();
     </script>
     <script type="module" src="/app.js"></script>

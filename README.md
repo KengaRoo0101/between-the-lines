@@ -1,13 +1,13 @@
 # Formed. / Between The Lines
 
-Single-session React app for uploading a JSON or CSV message export and generating a report, plus a separate Node/Express payments runtime for Stripe Checkout.
+Single-session React app for uploading a JSON or CSV message export and generating a report. Stripe checkout is intentionally held back for now and the payment paths fail closed.
 Formed. is the flagship platform layer for LRC Property LLC. It is designed as a practical ecosystem for turning ideas, documents, data, and action into structured products and operating systems.
 
 Between The Lines is the first working tool inside that ecosystem: a single-session React + Node web app for uploading a JSON or CSV message export, normalizing records, running rule-based anomaly detection, and producing a PDF-ready report view.
 
 ## Product architecture
 
-- **LRC Property LLC**: parent company, legal layer, payments, brand, privacy, and product ownership.
+- **LRC Property LLC**: parent company, legal layer, future payments, brand, privacy, and product ownership.
 - **Formed.**: primary monetizable platform for guided business/product/document/data workflows.
 - **Between The Lines**: first module; converts messy conversation exports into structured investigative-style reports.
 
@@ -17,7 +17,7 @@ Between The Lines is the first working tool inside that ecosystem: a single-sess
 - `/formed` also serves the Formed. landing page.
 - `/between-the-lines` serves the existing Between The Lines app.
 - `/samples/sample-conversation.json` serves the sample dataset used by the report demo.
-- `/api/*`, `/upload`, `/create-checkout-session`, and `/payment-status` power the Between The Lines module.
+- `/create-checkout-session`, `/payment-status`, and `/api/checkout/*` are hold-only payment paths while Stripe is disabled.
 
 ## Frontend (GitLab Pages static)
 
@@ -26,7 +26,7 @@ The frontend remains static and can be deployed to GitLab Pages.
 `index.html` exposes two optional meta tags used by `apiClient.js`:
 
 - `btl-analysis-api-base`: base URL for analysis endpoints (`/api/config`, `/api/analyze`, `/upload`)
-- `btl-payments-api-base`: base URL for Stripe checkout + entitlement endpoints
+- `btl-payments-api-base`: reserved payment API base. Checkout remains disabled unless the hold is explicitly reversed in code and config.
 
 If these are empty, the app uses relative paths.
 
@@ -42,42 +42,22 @@ Open `http://localhost:3000` for Formed. or `http://localhost:3000/between-the-l
 Optional: set `LOG_REQUESTS=true` to print one-line request logs in the server console.
 API responses include an `X-Request-Id` header to help trace errors in logs.
 
-## Payments runtime (Stripe + PostgreSQL)
+## Payment hold
 
-```bash
-npm run start:payments
-```
+Stripe is not live in this repo. Do not set Stripe secrets, do not publish package release workflows, and do not start a payment runtime for production while the hold is active.
 
-Required environment variables for the payments runtime:
-Runs the pipeline smoke test plus API integration tests for Formed root routing, Between The Lines routing, `/api/config`, `/api/analyze`, `/upload`, and the unconfigured-payments checkout path.
+Current hold behavior:
 
-- `STRIPE_SECRET_KEY`
-- `STRIPE_WEBHOOK_SECRET`
-- `DATABASE_URL`
-- `FRONTEND_BASE_URL` (for success/cancel redirects)
+- `PAYMENTS_ENABLED=false`
+- `OWNER_APPROVED_PAYMENTS=false`
+- `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID`, and `STRIPE_WEBHOOK_SECRET` must be absent
+- checkout creation endpoints return `503` with `mode: "hold"`
+- entitlement checks return unpaid hold status
+- the browser UI does not initiate checkout
 
-Optional:
+Reversing the hold later should be a separate owner-approved change that restores the Stripe and database dependencies, adds production secrets outside GitHub, runs test-mode checkout first, and updates this document in the same pull request.
 
-- `STRIPE_PRICE_ID` (if omitted, the runtime uses inline USD 12.00 price data)
-
-### Webhook source of truth
-
-Paid access is granted only by Stripe webhook events (`checkout.session.completed` and `checkout.session.async_payment_succeeded`) persisted in PostgreSQL. The redirect query string is only used to know which `report_id` to poll.
-
-### PostgreSQL tables
-
-The payments runtime auto-creates:
-
-- `report_entitlements`
-- `processed_webhook_events`
-1. Add your domain in Render custom domains for this service.
-2. Point your DNS records to Render using Render’s dashboard instructions.
-3. Set `PUBLIC_URL=https://www.lrcpropertyllc.com` or the chosen production host in your environment variables.
-4. Set `ENFORCE_CANONICAL_HOST=true` if canonical redirects are later re-enabled in `server.js`.
-5. Keep alternate hostnames redirected to the canonical host so Stripe success/cancel URLs stay consistent.
-6. Redeploy so Stripe success/cancel URLs use the new host.
-
-`processed_webhook_events` is used for idempotent webhook processing.
+For deployment, set `PUBLIC_URL` to the chosen production host, keep `ENFORCE_CANONICAL_HOST=true` when canonical redirects are required, and leave all payment variables false or absent.
 
 ## Tests
 
@@ -85,14 +65,12 @@ The payments runtime auto-creates:
 npm test
 ```
 
-Runs the smoke test plus API integration tests for `/api/config`, `/api/analyze`, `/upload`, and the legacy unconfigured-payments checkout route.
+Runs the report pipeline smoke test plus integration tests for the redirect service and hold-only payment endpoints.
 
 ## Structure
 
-- `server.js`: analysis/runtime server and API routes
-- `payments-runtime.js`: separate Stripe Checkout + webhook + entitlement runtime
-- `app.js`: client-side React app rendered directly in the browser
-- `server.js`: Express server, Formed routing, Between The Lines routing, API routes, payments, and analytics
+- `server.js`: Express redirect server, request IDs, health check, and payment-hold responses
+- `payments-runtime.js`: dormant Stripe Checkout + webhook + entitlement runtime that stays in hold mode unless explicitly re-enabled
 - `formed.html`: Formed. platform landing page
 - `formed.css`: Formed. landing page styling
 - `app.js`: client-side React app for Between The Lines rendered directly in the browser
@@ -114,9 +92,9 @@ Runs the smoke test plus API integration tests for `/api/config`, `/api/analyze`
 3. `analyzeMessages` applies threshold rules to detect patterns.
 4. `buildReport` creates the final report object consumed by the UI.
 
-## Monetization path
+## Future monetization path
 
-Start with the smallest revenue surface that does not distort the product:
+Do not activate payments until LRC explicitly reverses the current hold. The likely path later is still:
 
 1. Free Formed. landing page and free sample report.
 2. Paid Between The Lines full report/export.
