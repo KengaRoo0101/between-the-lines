@@ -2,28 +2,72 @@ const crypto = require('node:crypto');
 const express = require('express');
 
 const PORT = Number(process.env.PORT || 8787);
-const FRONTEND_BASE_URL = String(process.env.FRONTEND_BASE_URL || 'http://localhost:3000').replace(/\/+$/, '');
+const RAW_FRONTEND_BASE_URL = process.env.FRONTEND_BASE_URL || process.env.PUBLIC_URL || 'http://localhost:3000';
+const FRONTEND_BASE_URL = String(RAW_FRONTEND_BASE_URL).replace(/\/+$/, '');
 const PAYMENTS_ENABLED = String(process.env.PAYMENTS_ENABLED || '').toLowerCase() === 'true';
 const OWNER_APPROVED_PAYMENTS = String(process.env.OWNER_APPROVED_PAYMENTS || '').toLowerCase() === 'true';
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || '';
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || '';
 const STRIPE_PRICE_ID = process.env.STRIPE_PRICE_ID || '';
 const DATABASE_URL = process.env.DATABASE_URL || '';
+const EXPECTED_CURRENCY = String(process.env.EXPECTED_CURRENCY || 'usd').toLowerCase();
+const EXPECTED_PAYMENT_AMOUNT = Number(process.env.EXPECTED_PAYMENT_AMOUNT || 1200);
+const ALLOW_TEST_KEYS = String(process.env.ALLOW_TEST_KEYS || '').toLowerCase() === 'true';
+const IS_PRODUCTION = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true' || process.env.GO_LIVE === 'true';
 const PAYMENT_HOLD_MESSAGE = 'Stripe checkout is currently on hold. No payment will be started.';
 
 let stripe;
 let db;
+let liveConfigChecked = false;
 
 const app = express();
 
+app.disable('x-powered-by');
+app.set('trust proxy', true);
+
+function safeOrigin(value) {
+  try {
+    return new URL(value).origin;
+  } catch {
+    return 'http://localhost:3000';
+  }
+}
+
+const ALLOWED_ORIGIN = safeOrigin(FRONTEND_BASE_URL);
+
 app.use((request, response, next) => {
-  response.set('Access-Control-Allow-Origin', '*');
+  const requestId = crypto.randomUUID();
+  request.requestId = requestId;
+  response.set('X-Request-Id', requestId);
+  response.set('X-Content-Type-Options', 'nosniff');
+  response.set('Referrer-Policy', 'no-referrer');
+  response.set('Cache-Control', 'no-store');
+  if (IS_PRODUCTION) {
+    response.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+  next();
+});
+
+app.use((request, response, next) => {
+  const origin = request.headers.origin;
+  response.set('Vary', 'Origin');
   response.set('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
   response.set('Access-Control-Allow-Headers', 'Content-Type,Stripe-Signature');
+
+  if (!origin || origin === ALLOWED_ORIGIN) {
+    response.set('Access-Control-Allow-Origin', ALLOWED_ORIGIN);
+  }
+
   if (request.method === 'OPTIONS') {
+    if (origin && origin !== ALLOWED_ORIGIN) {
+      response.status(403).end();
+      return;
+    }
+
     response.status(204).end();
     return;
   }
+
   next();
 });
 
@@ -33,6 +77,22 @@ function requireReportId(reportId) {
 
 function paymentsAllowed() {
   return PAYMENTS_ENABLED && OWNER_APPROVED_PAYMENTS;
+}
+
+function normalizeCurrency(value) {
+  return String(value || '').toLowerCase();
+}
+
+function getSessionReportId(session) {
+  return String(session?.metadata?.report_id || session?.client_reference_id || '');
+}
+
+function parseConfiguredUrl(name, value) {
+  try {
+    return new URL(value);
+  } catch {
+    throw Object.assign(new Error(`${name} must be a valid absolute URL.`), { status: 500 });
+  }
 }
 
 function missingPaymentRequirements() {
@@ -45,12 +105,46 @@ function missingPaymentRequirements() {
   return missing;
 }
 
-function ensurePaymentClients() {
+function assertLivePaymentConfig() {
   const missing = missingPaymentRequirements();
   if (missing.length) {
     const error = new Error(`Payments runtime is held or incomplete. Missing: ${missing.join(', ')}.`);
     error.status = 503;
     throw error;
+  }
+
+  const frontendUrl = parseConfiguredUrl('FRONTEND_BASE_URL/PUBLIC_URL', FRONTEND_BASE_URL);
+  if (IS_PRODUCTION && frontendUrl.protocol !== 'https:') {
+    throw new Error('FRONTEND_BASE_URL/PUBLIC_URL must use https:// in production.');
+  }
+
+  if (STRIPE_SECRET_KEY.startsWith('pk_')) {
+    throw new Error('STRIPE_SECRET_KEY must be a server-side secret or restricted key, not a publishable key.');
+  }
+
+  const usingTestKey = STRIPE_SECRET_KEY.startsWith('sk_test_') || STRIPE_SECRET_KEY.startsWith('rk_test_');
+  const usingLiveKey = STRIPE_SECRET_KEY.startsWith('sk_live_') || STRIPE_SECRET_KEY.startsWith('rk_live_');
+  if (usingTestKey && (!ALLOW_TEST_KEYS || IS_PRODUCTION)) {
+    throw new Error('Refusing to start live payments with a Stripe test key. Use a live key in production.');
+  }
+  if (!usingLiveKey && !(ALLOW_TEST_KEYS && usingTestKey)) {
+    throw new Error('STRIPE_SECRET_KEY must look like sk_live_, rk_live_, or an explicitly allowed non-production test key.');
+  }
+
+  if (!STRIPE_WEBHOOK_SECRET.startsWith('whsec_')) {
+    throw new Error('STRIPE_WEBHOOK_SECRET must be the whsec_ signing secret for the configured Stripe webhook endpoint.');
+  }
+
+  if (!Number.isSafeInteger(EXPECTED_PAYMENT_AMOUNT) || EXPECTED_PAYMENT_AMOUNT <= 0) {
+    throw new Error('EXPECTED_PAYMENT_AMOUNT must be a positive integer number of the smallest currency unit.');
+  }
+
+  liveConfigChecked = true;
+}
+
+function ensurePaymentClients() {
+  if (!liveConfigChecked) {
+    assertLivePaymentConfig();
   }
 
   if (!stripe || !db) {
@@ -63,17 +157,17 @@ function ensurePaymentClients() {
   return { stripe, db };
 }
 
-function sendCheckoutHold(response) {
-  response.set('Cache-Control', 'no-store');
+function sendCheckoutHold(response, request) {
   response.status(503).json({
     ok: false,
     available: false,
     mode: 'hold',
     error: PAYMENT_HOLD_MESSAGE,
+    requestId: request.requestId,
   });
 }
 
-function entitlementHold(reportId) {
+function entitlementHold(reportId, request) {
   return {
     ok: true,
     available: false,
@@ -82,6 +176,7 @@ function entitlementHold(reportId) {
     paid: false,
     status: 'held',
     paymentStatus: 'unpaid',
+    requestId: request.requestId,
   };
 }
 
@@ -97,10 +192,15 @@ async function initDb() {
       amount_total INTEGER,
       currency TEXT,
       paid_at TIMESTAMPTZ,
+      failure_reason TEXT,
+      last_event_id TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
+
+  await database.query('ALTER TABLE report_entitlements ADD COLUMN IF NOT EXISTS failure_reason TEXT;');
+  await database.query('ALTER TABLE report_entitlements ADD COLUMN IF NOT EXISTS last_event_id TEXT;');
 
   await database.query(`
     CREATE TABLE IF NOT EXISTS processed_webhook_events (
@@ -110,10 +210,27 @@ async function initDb() {
   `);
 }
 
+function buildLineItems() {
+  if (STRIPE_PRICE_ID) {
+    return [{ price: STRIPE_PRICE_ID, quantity: 1 }];
+  }
+
+  return [
+    {
+      price_data: {
+        currency: EXPECTED_CURRENCY,
+        product_data: { name: 'Between The Lines Full Report' },
+        unit_amount: EXPECTED_PAYMENT_AMOUNT,
+      },
+      quantity: 1,
+    },
+  ];
+}
+
 app.post('/api/checkout/session', express.json({ limit: '200kb' }), async (request, response, next) => {
   try {
     if (!paymentsAllowed()) {
-      sendCheckoutHold(response);
+      sendCheckoutHold(response, request);
       return;
     }
 
@@ -137,22 +254,10 @@ app.post('/api/checkout/session', express.json({ limit: '200kb' }), async (reque
       return;
     }
 
-    const lineItems = STRIPE_PRICE_ID
-      ? [{ price: STRIPE_PRICE_ID, quantity: 1 }]
-      : [
-          {
-            price_data: {
-              currency: 'usd',
-              product_data: { name: 'Between The Lines Full Report' },
-              unit_amount: 1200,
-            },
-            quantity: 1,
-          },
-        ];
-
     const session = await stripeClient.checkout.sessions.create({
       mode: 'payment',
-      line_items: lineItems,
+      client_reference_id: reportId,
+      line_items: buildLineItems(),
       metadata: {
         report_id: reportId,
       },
@@ -161,10 +266,16 @@ app.post('/api/checkout/session', express.json({ limit: '200kb' }), async (reque
     });
 
     await database.query(
-      `INSERT INTO report_entitlements (report_id, checkout_session_id, status, payment_status)
-       VALUES ($1, $2, 'pending', 'unpaid')
+      `INSERT INTO report_entitlements (report_id, checkout_session_id, status, payment_status, updated_at)
+       VALUES ($1, $2, 'pending', 'unpaid', NOW())
        ON CONFLICT (report_id)
-       DO UPDATE SET checkout_session_id = EXCLUDED.checkout_session_id, updated_at = NOW()`,
+       DO UPDATE SET
+        checkout_session_id = EXCLUDED.checkout_session_id,
+        status = 'pending',
+        payment_status = 'unpaid',
+        failure_reason = NULL,
+        updated_at = NOW()
+       WHERE report_entitlements.status <> 'paid'`,
       [reportId, session.id],
     );
 
@@ -185,10 +296,8 @@ app.get('/api/checkout/entitlement/:reportId', async (request, response, next) =
       return;
     }
 
-    response.set('Cache-Control', 'no-store');
-
     if (!paymentsAllowed()) {
-      response.json(entitlementHold(reportId));
+      response.json(entitlementHold(reportId, request));
       return;
     }
 
@@ -219,9 +328,100 @@ app.get('/api/checkout/entitlement/:reportId', async (request, response, next) =
   }
 });
 
+async function retrieveAuthoritativeSession(stripeClient, session) {
+  if (!session?.id) return session;
+  return stripeClient.checkout.sessions.retrieve(session.id, {
+    expand: ['line_items.data.price'],
+  });
+}
+
+function validatePaidSession(session) {
+  const failures = [];
+
+  if (session.mode && session.mode !== 'payment') {
+    failures.push('checkout session mode is not payment');
+  }
+
+  if (session.payment_status !== 'paid') {
+    failures.push(`payment_status is ${session.payment_status || 'missing'}`);
+  }
+
+  if (Number(session.amount_total) !== EXPECTED_PAYMENT_AMOUNT) {
+    failures.push('amount_total does not match expected amount');
+  }
+
+  if (normalizeCurrency(session.currency) !== EXPECTED_CURRENCY) {
+    failures.push('currency does not match expected currency');
+  }
+
+  if (STRIPE_PRICE_ID) {
+    const lineItems = Array.isArray(session.line_items?.data) ? session.line_items.data : [];
+    const hasExpectedPrice = lineItems.some((item) => item?.price?.id === STRIPE_PRICE_ID);
+    if (!hasExpectedPrice) {
+      failures.push('checkout line item price does not match STRIPE_PRICE_ID');
+    }
+  }
+
+  return failures;
+}
+
+async function markEntitlement(client, session, status, eventId, failureReason = null) {
+  const reportId = getSessionReportId(session);
+  if (!requireReportId(reportId)) {
+    console.warn(`[${eventId}] Ignoring checkout session with invalid or missing report_id.`);
+    return;
+  }
+
+  const paidAt = status === 'paid' ? 'NOW()' : 'NULL';
+  await client.query(
+    `INSERT INTO report_entitlements
+      (report_id, checkout_session_id, status, payment_status, amount_total, currency, paid_at, failure_reason, last_event_id, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, ${paidAt}, $7, $8, NOW())
+     ON CONFLICT (report_id)
+     DO UPDATE SET
+      checkout_session_id = EXCLUDED.checkout_session_id,
+      status = EXCLUDED.status,
+      payment_status = EXCLUDED.payment_status,
+      amount_total = EXCLUDED.amount_total,
+      currency = EXCLUDED.currency,
+      paid_at = EXCLUDED.paid_at,
+      failure_reason = EXCLUDED.failure_reason,
+      last_event_id = EXCLUDED.last_event_id,
+      updated_at = NOW()
+     WHERE report_entitlements.status <> 'paid' OR EXCLUDED.status = 'paid'`,
+    [
+      reportId,
+      session.id || null,
+      status,
+      session.payment_status || 'unpaid',
+      Number.isFinite(Number(session.amount_total)) ? Number(session.amount_total) : null,
+      normalizeCurrency(session.currency) || null,
+      failureReason,
+      eventId,
+    ],
+  );
+}
+
+async function handleCheckoutSuccess(stripeClient, client, event) {
+  const session = await retrieveAuthoritativeSession(stripeClient, event.data.object);
+  const validationFailures = validatePaidSession(session);
+
+  if (validationFailures.length > 0) {
+    await markEntitlement(client, session, 'rejected', event.id, validationFailures.join('; '));
+    return;
+  }
+
+  await markEntitlement(client, session, 'paid', event.id);
+}
+
+async function handleCheckoutFailure(client, event, status) {
+  const session = event.data.object;
+  await markEntitlement(client, session, status, event.id, event.type);
+}
+
 app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (request, response) => {
   if (!paymentsAllowed()) {
-    sendCheckoutHold(response);
+    sendCheckoutHold(response, request);
     return;
   }
 
@@ -255,30 +455,12 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
       return;
     }
 
-    if (
-      event.type === 'checkout.session.completed' ||
-      event.type === 'checkout.session.async_payment_succeeded'
-    ) {
-      const session = event.data.object;
-      const reportId = String(session.metadata?.report_id || '');
-
-      if (requireReportId(reportId)) {
-        await client.query(
-          `INSERT INTO report_entitlements
-            (report_id, checkout_session_id, status, payment_status, amount_total, currency, paid_at, updated_at)
-           VALUES ($1, $2, 'paid', $3, $4, $5, NOW(), NOW())
-           ON CONFLICT (report_id)
-           DO UPDATE SET
-            checkout_session_id = EXCLUDED.checkout_session_id,
-            status = 'paid',
-            payment_status = EXCLUDED.payment_status,
-            amount_total = EXCLUDED.amount_total,
-            currency = EXCLUDED.currency,
-            paid_at = NOW(),
-            updated_at = NOW()`,
-          [reportId, session.id, session.payment_status || 'paid', session.amount_total || null, session.currency || null],
-        );
-      }
+    if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
+      await handleCheckoutSuccess(stripeClient, client, event);
+    } else if (event.type === 'checkout.session.async_payment_failed') {
+      await handleCheckoutFailure(client, event, 'failed');
+    } else if (event.type === 'checkout.session.expired') {
+      await handleCheckoutFailure(client, event, 'expired');
     }
 
     await client.query('INSERT INTO processed_webhook_events(event_id) VALUES ($1)', [event.id]);
@@ -286,37 +468,42 @@ app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async
     response.json({ received: true });
   } catch (error) {
     await client.query('ROLLBACK');
+    console.error(`[${request.requestId || event.id}] Webhook processing failed.`, error);
     response.status(500).send('Webhook processing failed.');
   } finally {
     client.release();
   }
 });
 
-app.get('/healthz', async (_request, response) => {
-  if (!paymentsAllowed()) {
+app.get('/healthz', async (_request, response, next) => {
+  try {
+    if (!paymentsAllowed()) {
+      response.status(200).json({
+        ok: true,
+        service: 'btl-payments-runtime',
+        available: false,
+        mode: 'hold',
+        now: new Date().toISOString(),
+      });
+      return;
+    }
+
+    const { db: database } = ensurePaymentClients();
+    await database.query('SELECT 1');
     response.status(200).json({
       ok: true,
       service: 'btl-payments-runtime',
-      available: false,
-      mode: 'hold',
+      available: true,
+      mode: 'live',
       now: new Date().toISOString(),
     });
-    return;
+  } catch (error) {
+    next(error);
   }
-
-  const { db: database } = ensurePaymentClients();
-  await database.query('SELECT 1');
-  response.status(200).json({
-    ok: true,
-    service: 'btl-payments-runtime',
-    available: true,
-    mode: 'live',
-    now: new Date().toISOString(),
-  });
 });
 
-app.use((error, _request, response, _next) => {
-  const requestId = crypto.randomUUID();
+app.use((error, request, response, _next) => {
+  const requestId = request.requestId || crypto.randomUUID();
   console.error(`[${requestId}]`, error);
   const status = Number(error.status || 500);
   response.status(status).json({
@@ -332,7 +519,7 @@ async function start() {
 
   app.listen(PORT, () => {
     const mode = paymentsAllowed() ? 'live' : 'hold';
-    console.log(`BTL payments runtime listening on http://localhost:${PORT}; mode=${mode}`);
+    console.log(`BTL payments runtime listening on port ${PORT}; mode=${mode}; frontend=${FRONTEND_BASE_URL}`);
   });
 }
 
@@ -343,4 +530,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { app, initDb, paymentsAllowed };
+module.exports = { app, initDb, paymentsAllowed, validatePaidSession };
