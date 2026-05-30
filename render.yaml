@@ -3,6 +3,14 @@ services:
     name: between-the-lines
     env: node
     buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: PUBLIC_URL
+        value: https://www.lrcpropertyllc.com
+      - key: ENFORCE_CANONICAL_HOST
+        value: "true"
+      - key: LOG_REQUESTS
+        value: "true"
     startCommand: npm start
     healthCheckPath: /healthz
     envVars:

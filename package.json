@@ -4,6 +4,8 @@
   "description": "Legacy redirect service plus guarded Stripe Checkout payments runtime for the Between The Lines module.",
   "main": "server.js",
   "scripts": {
+    "test": "node scripts/smoke-test.js && node --test tests/*.test.js",
+    "preflight": "node scripts/preflight.js",
     "start": "node server.js",
     "dev": "node server.js",
     "start:payments": "node payments-runtime.js",

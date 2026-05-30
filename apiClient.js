@@ -24,6 +24,7 @@ async function parseJsonSafe(response) {
 }
 
 export async function getConfig() {
+  const response = await fetch("/api/config");
   const response = await fetch(buildUrl(ANALYSIS_API_BASE, "/api/config"));
   const data = await parseJsonSafe(response);
   if (!response.ok) {
@@ -32,6 +33,13 @@ export async function getConfig() {
   return data;
 }
 
+export async function getPaymentStatus(sessionId) {
+  const response = await fetch(`/payment-status?session_id=${encodeURIComponent(sessionId)}`, {
+    cache: "no-store",
+  });
+  const data = await parseJsonSafe(response);
+  if (!response.ok) {
+    throw new Error(data.error || "The checkout session could not be verified.");
 export async function getEntitlementStatus(reportId) {
   if (!PAYMENTS_ENABLED) {
     return {
@@ -72,6 +80,7 @@ export async function analyzeUpload({
   body.append("researchConsent", researchConsent ? "true" : "false");
   body.append("uploadRightsConfirmed", uploadRightsConfirmed ? "true" : "false");
 
+  const response = await fetch("/upload", {
   const response = await fetch(buildUrl(ANALYSIS_API_BASE, "/upload"), {
     method: "POST",
     body,
@@ -85,6 +94,7 @@ export async function analyzeUpload({
 }
 
 export async function analyzeInline({ filename, content, rules, timezone, researchConsent }) {
+  const response = await fetch("/api/analyze", {
   const response = await fetch(buildUrl(ANALYSIS_API_BASE, "/api/analyze"), {
     method: "POST",
     headers: {
@@ -106,6 +116,8 @@ export async function analyzeInline({ filename, content, rules, timezone, resear
   return data;
 }
 
+export async function createCheckoutSession() {
+  const response = await fetch("/create-checkout-session", {
 export async function createCheckoutSession(reportId) {
   if (!PAYMENTS_ENABLED) {
     throw new Error("Checkout is currently on hold. No payment will be started.");
@@ -116,6 +128,9 @@ export async function createCheckoutSession(reportId) {
     headers: {
       "Content-Type": "application/json",
     },
+  });
+  const data = await parseJsonSafe(response);
+  if (!response.ok || !data.url) {
     body: JSON.stringify({ reportId }),
   });
   const data = await parseJsonSafe(response);

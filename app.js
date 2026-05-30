@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "https://esm.sh/react@18.3.1";
 import { createRoot } from "https://esm.sh/react-dom@18.3.1/client";
 import htm from "https://esm.sh/htm@3.1.1";
+import { analyzeInline, analyzeUpload, createCheckoutSession, getConfig, getPaymentStatus } from "./apiClient.js";
 import {
   analyzeInline,
   analyzeUpload,
@@ -53,6 +54,13 @@ const LEGAL_LINKS = [
   { href: "/privacy", label: "Privacy" },
   { href: "/refunds", label: "Refunds" },
   { href: "/data-retention", label: "Data retention" },
+];
+
+const TOP_NAV_LINKS = [
+  { href: "#home", label: "Home" },
+  { href: "#about", label: "About" },
+  { href: "#our-ideas", label: "Our Ideas" },
+  { href: "#contact", label: "Contact" },
 ];
 
 const HERO_USE_CASES = [
@@ -1559,7 +1567,7 @@ function HeroSection({
   onResearchConsentChange,
 }) {
   return html`
-    <section className="hero-card no-print" data-reveal>
+    <section id="home" className="hero-card no-print" data-reveal>
       <div className="hero-copy-block">
         <h1>Between The Lines</h1>
         <p className="hero-subhead">
@@ -1599,7 +1607,7 @@ function HeroSection({
 
 function StartGuidanceSection({ onOpenFile, onUseSample, disabled }) {
   return html`
-    <section className="panel start-panel no-print" data-reveal>
+    <section id="about" className="panel start-panel no-print" data-reveal>
       <${SectionHeader}
         title="Get started in a minute"
         copy="Bring a saved conversation export, or use the sample to preview the report before uploading your own file."
@@ -1665,7 +1673,7 @@ function StartGuidanceSection({ onOpenFile, onUseSample, disabled }) {
 
 function TestimonialsSection() {
   return html`
-    <section className="panel testimonials-panel no-print" data-reveal>
+    <section id="our-ideas" className="panel testimonials-panel no-print" data-reveal>
       <div className="compact-section-heading">
         <h2>Testimonials</h2>
       </div>
@@ -2094,7 +2102,7 @@ function ReportView({ presentation, timelineExpanded, highlightedTimelineDay, on
 
 function SiteFooter({ onFeedbackClick }) {
   return html`
-    <footer className="site-footer no-print">
+    <footer id="contact" className="site-footer no-print">
       <div className="footer-divider" aria-hidden="true"></div>
       <div className="site-footer-copy">
         <p className="footer-parent-brand">Operated by LRC Property LLC</p>
@@ -2223,6 +2231,7 @@ function App() {
     (async () => {
       try {
         for (let attempt = 0; attempt < 12; attempt += 1) {
+          const data = await getPaymentStatus(sessionId);
           const data = await getEntitlementStatus(reportId);
 
           if (data.paid) {
@@ -2563,6 +2572,7 @@ function App() {
     }
 
     try {
+      const data = await createCheckoutSession();
       const reportId = snapshot.source?.reportId || generateReportId();
       persistReportSession({
         ...snapshot,
@@ -2611,14 +2621,26 @@ function App() {
       />
 
       <header className="site-header no-print">
-        <div className="brand-lockup">
-          <span className="brand-mark brand-inspect" aria-hidden="true">
-            <span className="inspect-icon"></span>
-          </span>
-          <div>
-            <p className="brand-name">Between The Lines</p>
-            <p className="brand-tagline">When something feels off, see the pattern.</p>
+        <div className="header-bar">
+          <div className="brand-lockup">
+            <span className="brand-mark brand-inspect" aria-hidden="true">
+              <span className="inspect-icon"></span>
+            </span>
+            <div>
+              <p className="brand-name">LRC Property LLC</p>
+              <p className="brand-tagline">The foundation for everything we build.</p>
+            </div>
           </div>
+
+          <nav className="top-nav" aria-label="Primary navigation">
+            ${TOP_NAV_LINKS.map(
+              (item) => html`
+                <a key=${item.href} href=${item.href}>${item.label}</a>
+              `,
+            )}
+          </nav>
+
+          <a className="top-nav-cta" href="#contact">Get in touch</a>
         </div>
       </header>
 
