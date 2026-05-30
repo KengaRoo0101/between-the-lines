@@ -11,3 +11,24 @@ services:
         value: "true"
       - key: LOG_REQUESTS
         value: "true"
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PUBLIC_URL
+        value: https://www.lrcpropertyllc.com
+      - key: FRONTEND_BASE_URL
+        value: https://www.lrcpropertyllc.com
+      - key: ENFORCE_CANONICAL_HOST
+        value: "true"
+      - key: REDIRECT_TARGET_PATH
+        value: "/#paywall"
+      - key: LOG_REQUESTS
+        value: "true"
+      - key: PAYMENTS_ENABLED
+        value: "false"
+      - key: OWNER_APPROVED_PAYMENTS
+        value: "false"
+      - key: ALLOW_TEST_KEYS
+        value: "false"

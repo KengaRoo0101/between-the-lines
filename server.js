@@ -162,131 +162,68 @@ function parseRules(value) {
 
   try {
     return JSON.parse(value);
+const crypto = require("node:crypto");
+const express = require("express");
+
+const app = express();
+const PORT = Number(process.env.PORT || 3000);
+const PUBLIC_URL = String(process.env.PUBLIC_URL || "https://www.lrcpropertyllc.com").replace(/\/+$/, "");
+const REDIRECT_TARGET_PATH = process.env.REDIRECT_TARGET_PATH || "/#paywall";
+const ENABLE_REQUEST_LOGS = String(process.env.LOG_REQUESTS || "").toLowerCase() === "true";
+const ENFORCE_CANONICAL_HOST = String(process.env.ENFORCE_CANONICAL_HOST || "").toLowerCase() === "true";
+const PAYMENT_HOLD_MESSAGE = "Payments are currently on hold. No checkout session was created.";
+
+function safeUrl(value, fallback) {
+  try {
+    return new URL(value).toString().replace(/\/+$/, "");
   } catch {
-    return {};
+    return fallback;
   }
 }
 
-function userSafeErrorMessage(error) {
-  const message = String(error?.message || "").toLowerCase();
+const CANONICAL_BASE_URL = safeUrl(PUBLIC_URL, "https://www.lrcpropertyllc.com");
+const CANONICAL_HOST = new URL(CANONICAL_BASE_URL).host.toLowerCase();
+const REDIRECT_TARGET_URL = new URL(REDIRECT_TARGET_PATH, `${CANONICAL_BASE_URL}/`).toString();
 
-  if (message.includes("file too large") || message.includes("request entity too large")) {
-    return "That file is too large to process here. Please try a smaller JSON or CSV export.";
-  }
+app.disable("x-powered-by");
+app.set("trust proxy", true);
 
-  if (message.includes("no file")) {
-    return "Choose a JSON or CSV conversation export before generating a report.";
-  }
+app.use((request, response, next) => {
+  const requestId = crypto.randomUUID();
+  request.requestId = requestId;
+  response.set("X-Request-Id", requestId);
+  response.set("X-Content-Type-Options", "nosniff");
+  response.set("Referrer-Policy", "no-referrer");
+  response.set("Cache-Control", "no-store");
+  next();
+});
 
-  if (message.includes("empty")) {
-    return "That file looks empty. Please choose a JSON or CSV file with conversation data.";
-  }
-
-  if (message.includes("timestamp")) {
-    return "We could not find readable message timestamps in that file. Please choose a conversation export with timestamps.";
-  }
-
-  if (message.includes("message array")) {
-    return "We could not find conversation messages in that file. Please choose an export that contains message records.";
-  }
-
-  if (message.includes("json") || message.includes("csv") || message.includes("unexpected token") || message.includes("parse")) {
-    return "We could not read that file. Please upload a valid JSON or CSV conversation export.";
-  }
-
-  return "We could not generate a report from that file. Please try another JSON or CSV conversation export.";
-}
-
-function recordAnalyticsEvent(payload = {}) {
-  const name = String(payload.name || "");
-  if (!ALLOWED_ANALYTICS_EVENTS.has(name)) {
-    return false;
-  }
-
-  analyticsEvents.push({
-    name,
-    at: typeof payload.at === "string" ? payload.at : new Date().toISOString(),
-    path: typeof payload.path === "string" ? payload.path : "/",
-    receivedAt: new Date().toISOString(),
+if (ENABLE_REQUEST_LOGS) {
+  app.use((request, response, next) => {
+    const startedAt = Date.now();
+    response.on("finish", () => {
+      const durationMs = Date.now() - startedAt;
+      console.log(
+        `[${new Date().toISOString()}] [${request.requestId}] ${request.method} ${request.originalUrl} ${response.statusCode} ${durationMs}ms`,
+      );
+    });
+    next();
   });
-
-  if (analyticsEvents.length > 250) {
-    analyticsEvents.splice(0, analyticsEvents.length - 250);
-  }
-
-  return true;
 }
 
-function buildReportSections(report) {
-  const findings = Array.isArray(report.groupedFindings)
-    ? report.groupedFindings.flatMap((group) =>
-        Array.isArray(group.items)
-          ? group.items.map((item) => ({
-              ...item,
-              categoryLabel: group.category,
-            }))
-          : [],
-      )
-    : [];
-
-  return {
-    keyFindings: findings.slice(0, 6).map((item) => ({
-      category: item.categoryLabel || item.category,
-      type: item.type,
-      title: item.title || item.summary || "Pattern to review",
-      summary: item.summary || item.description || "",
-      timestamp: item.timestamp || item.startTimestamp || item.endTimestamp || null,
-      severity: item.severity || "low",
-    })),
-    timeline: Array.isArray(report.chronology)
-      ? report.chronology.map((day) => ({
-          dayKey: day.dayKey,
-          dateLabel: day.dateLabel,
-          totalMessages: day.totalMessages,
-          messages: day.items,
-        }))
-      : [],
-    insights: [
-      ...(report.executiveSummary?.points || []),
-      ...(Array.isArray(report.disclaimer) ? report.disclaimer : []),
-    ],
-  };
-}
-
-function analyzeConversation({ filename, content, timezone, rules }) {
-  const mergedRules = mergeRules(rules || {});
-  const parsedUpload = parseUpload({
-    filename,
-    content,
-    timezone,
-  });
-
-  const normalized = normalizeMessages(parsedUpload);
-  const analysis = analyzeMessages(normalized.messages, mergedRules);
-  const report = buildReport({
-    normalized,
-    analysis,
-    rules: mergedRules,
-    source: {
-      filename,
-      timezone,
-      receivedAt: new Date().toISOString(),
+app.get("/healthz", (_request, response) => {
+  response.status(200).json({
+    ok: true,
+    service: "lrc-btl-redirect",
+    canonicalHost: CANONICAL_HOST,
+    enforceCanonicalHost: ENFORCE_CANONICAL_HOST,
+    payments: {
+      available: false,
+      mode: "hold",
     },
+    target: REDIRECT_TARGET_URL,
+    now: new Date().toISOString(),
   });
-
-  return {
-    report,
-    rules: mergedRules,
-    sections: buildReportSections(report),
-  };
-}
-
-function getRequestTimezone(request) {
-  return request.body?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
-}
-
-app.get("/api/config", (_request, response) => {
-  response.json({ rules: defaultRules });
 });
 
 app.get("/healthz", (_request, response) => {
@@ -422,22 +359,50 @@ app.get("/payment-status", async (request, response, next) => {
     next(error);
   }
 });
+function sendCheckoutHold(request, response) {
+  response.status(503).json({
+    ok: false,
+    available: false,
+    mode: "hold",
+    error: PAYMENT_HOLD_MESSAGE,
+    requestId: request.requestId,
+  });
+}
 
-app.use("/samples", express.static(path.join(ROOT_DIR, "samples")));
+function sendEntitlementHold(request, response) {
+  const reportId = request.params.reportId || request.query.report_id || "";
+  response.status(200).json({
+    ok: true,
+    available: false,
+    mode: "hold",
+    reportId,
+    paid: false,
+    status: "held",
+    paymentStatus: "unpaid",
+    requestId: request.requestId,
+  });
+}
 
-app.use(express.static(ROOT_DIR, {
-  extensions: ["html"],
-  index: "index.html",
-}));
+app.post("/create-checkout-session", sendCheckoutHold);
+app.post("/api/checkout/session", sendCheckoutHold);
+app.post("/api/stripe/webhook", sendCheckoutHold);
+app.get("/payment-status", sendEntitlementHold);
+app.get("/api/checkout/entitlement/:reportId", sendEntitlementHold);
 
 app.use((request, response) => {
-  if (request.accepts("html")) {
-    response.status(404).sendFile(path.join(ROOT_DIR, "index.html"));
+  const method = request.method.toUpperCase();
+
+  if (method === "GET" || method === "HEAD") {
+    response.redirect(301, REDIRECT_TARGET_URL);
     return;
   }
 
   response.status(404).json({
     error: "Not found",
+  response.status(410).json({
+    ok: false,
+    message: "This service has moved under the LRC Property LLC umbrella.",
+    target: REDIRECT_TARGET_URL,
     requestId: request.requestId,
   });
 });
@@ -447,8 +412,14 @@ app.use((error, _request, response, _next) => {
   response.status(status).json({
     error: userSafeErrorMessage(error),
     requestId: _request.requestId,
+function startServer(port = PORT, host = "0.0.0.0") {
+  const server = app.listen(port, host, () => {
+    const address = server.address();
+    const resolvedPort = typeof address === "object" && address ? address.port : port;
+    console.log(`BTL redirect service running on port ${resolvedPort}; target=${REDIRECT_TARGET_URL}`);
   });
-});
+  return server;
+}
 
 function startServer(port = PORT) {
   const server = app.listen(port, () => {

@@ -2,6 +2,14 @@ import React, { useEffect, useRef, useState } from "https://esm.sh/react@18.3.1"
 import { createRoot } from "https://esm.sh/react-dom@18.3.1/client";
 import htm from "https://esm.sh/htm@3.1.1";
 import { analyzeInline, analyzeUpload, createCheckoutSession, getConfig, getPaymentStatus } from "./apiClient.js";
+import {
+  analyzeInline,
+  analyzeUpload,
+  arePaymentsEnabled,
+  createCheckoutSession,
+  getConfig,
+  getEntitlementStatus,
+} from "./apiClient.js";
 
 const html = htm.bind(React.createElement);
 
@@ -266,14 +274,22 @@ function clearReportSession() {
   }
 }
 
+function generateReportId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `rpt_${crypto.randomUUID().replace(/-/g, "")}`;
+  }
+
+  return `rpt_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+}
+
 function cleanupPaymentQuery() {
   if (typeof window === "undefined") return;
 
   const url = new URL(window.location.href);
-  if (!url.searchParams.has("paid") && !url.searchParams.has("session_id")) return;
+  if (!url.searchParams.has("paid") && !url.searchParams.has("report_id")) return;
 
   url.searchParams.delete("paid");
-  url.searchParams.delete("session_id");
+  url.searchParams.delete("report_id");
   window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
 }
 
@@ -1740,6 +1756,8 @@ function LoadingState({ source }) {
 }
 
 function PaywallCard({ onUnlock, onBack, isStartingCheckout, checkoutError }) {
+  const paymentsEnabled = arePaymentsEnabled();
+
   return html`
     <section className="panel paywall no-print" data-reveal>
       <div className="label">REPORT READY</div>
@@ -1759,18 +1777,27 @@ function PaywallCard({ onUnlock, onBack, isStartingCheckout, checkoutError }) {
       </div>
 
       <div className="price-block">
-        <div className="price">$12</div>
-        <div className="price-note">one-time report</div>
+        <div className="price">${paymentsEnabled ? "$12" : "On hold"}</div>
+        <div className="price-note">${paymentsEnabled ? "one-time report" : "checkout disabled"}</div>
       </div>
+
+      ${paymentsEnabled
+        ? null
+        : html`
+            <div className="setup-status" aria-live="polite">
+              <strong>Checkout is currently on hold.</strong>
+              <p>No Stripe payment will be started until LRC explicitly reverses the hold.</p>
+            </div>
+          `}
 
       <div className="paywall-actions">
         <button
           type="button"
           className="primary-button"
           onClick=${onUnlock}
-          disabled=${isStartingCheckout}
+          disabled=${isStartingCheckout || !paymentsEnabled}
         >
-          ${isStartingCheckout ? "Starting checkout..." : "Unlock full report — $12"}
+          ${paymentsEnabled ? (isStartingCheckout ? "Starting checkout..." : "Unlock full report — $12") : "Checkout on hold"}
         </button>
 
         <button type="button" className="secondary-button" onClick=${onBack} disabled=${isStartingCheckout}>
@@ -1789,10 +1816,14 @@ function PaywallCard({ onUnlock, onBack, isStartingCheckout, checkoutError }) {
 
       <p className="trust-line">Private. Your data is not sold. Optional anonymized research only.</p>
 
-      <p className="paywall-legal-copy">
-        Payments are processed by Stripe. Digital reports are generally non-refundable once generated, except where
-        required by law.
-      </p>
+      ${paymentsEnabled
+        ? html`
+            <p className="paywall-legal-copy">
+              Payments are processed by Stripe. Digital reports are generally non-refundable once generated, except
+              where required by law.
+            </p>
+          `
+        : null}
       <${LegalLinks} className="paywall-links" />
     </section>
   `;
@@ -2181,10 +2212,10 @@ function App() {
 
     const params = new URLSearchParams(window.location.search);
     const paidState = params.get("paid");
-    const sessionId = params.get("session_id");
+    const reportId = params.get("report_id");
     const snapshot = readReportSession();
 
-    if (paidState !== "success" || !sessionId || !snapshot?.result || snapshot.source?.isSample) {
+    if (paidState !== "success" || !reportId || !snapshot?.result || snapshot.source?.isSample) {
       if (paidState === "cancelled" || paidState === "success") {
         cleanupPaymentQuery();
       }
@@ -2201,6 +2232,7 @@ function App() {
       try {
         for (let attempt = 0; attempt < 12; attempt += 1) {
           const data = await getPaymentStatus(sessionId);
+          const data = await getEntitlementStatus(reportId);
 
           if (data.paid) {
             if (cancelled) return;
@@ -2371,6 +2403,7 @@ function App() {
       const safeSource = {
         name: nextSource.name,
         isSample: Boolean(nextSource.isSample),
+        reportId: nextSource.reportId || generateReportId(),
       };
 
       if (nextSource.file && !nextSource.isSample) {
@@ -2524,6 +2557,11 @@ function App() {
 
   async function handleUnlockReport() {
     setCheckoutError("");
+    if (!arePaymentsEnabled()) {
+      setCheckoutError("Checkout is currently on hold. No payment will be started.");
+      return;
+    }
+
     setIsStartingCheckout(true);
 
     const snapshot = readReportSession();
@@ -2533,16 +2571,28 @@ function App() {
       return;
     }
 
-    persistReportSession({
-      ...snapshot,
-      mode,
-      isReportUnlocked: false,
-    });
-
     try {
       const data = await createCheckoutSession();
+      const reportId = snapshot.source?.reportId || generateReportId();
+      persistReportSession({
+        ...snapshot,
+        source: {
+          ...(snapshot.source || {}),
+          reportId,
+        },
+        mode,
+        isReportUnlocked: false,
+      });
 
-      window.location.assign(data.url);
+      const data = await createCheckoutSession(reportId);
+
+      if (data.alreadyPaid) {
+        setIsReportUnlocked(true);
+        setIsStartingCheckout(false);
+        return;
+      }
+
+      window.location.assign(data.checkoutUrl);
     } catch (error) {
       setCheckoutError(String(error?.message || error || "The checkout session could not be created."));
       setIsStartingCheckout(false);

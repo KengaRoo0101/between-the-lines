@@ -31,6 +31,32 @@ test("GET /api/config returns default rules", async () => {
   assert.equal(typeof payload.rules, "object");
   assert.equal(typeof payload.rules.gapHours, "number");
   assert.equal(typeof payload.rules.spikeMultiplier, "number");
+test("GET / redirects to the LRC umbrella target", async () => {
+  const response = await fetch(`${baseUrl}/`, { redirect: "manual" });
+  assert.equal(response.status, 301);
+  assert.equal(typeof response.headers.get("x-request-id"), "string");
+  assert.match(response.headers.get("location"), /^https:\/\/www\.lrcpropertyllc\.com\/#paywall$/);
+});
+
+test("HEAD /between-the-lines redirects without a body", async () => {
+  const response = await fetch(`${baseUrl}/between-the-lines`, {
+    method: "HEAD",
+    redirect: "manual",
+  });
+  assert.equal(response.status, 301);
+  assert.equal(typeof response.headers.get("x-request-id"), "string");
+  assert.match(response.headers.get("location"), /^https:\/\/www\.lrcpropertyllc\.com\/#paywall$/);
+});
+
+test("POST / rejects non-browser traffic with move message", async () => {
+  const response = await fetch(`${baseUrl}/`, { method: "POST" });
+  assert.equal(response.status, 410);
+  assert.equal(typeof response.headers.get("x-request-id"), "string");
+
+  const payload = await response.json();
+  assert.equal(payload.ok, false);
+  assert.equal(payload.message, "This service has moved under the LRC Property LLC umbrella.");
+  assert.match(payload.target, /^https:\/\/www\.lrcpropertyllc\.com\/#paywall$/);
 });
 
 test("GET /healthz returns service heartbeat", async () => {
@@ -63,6 +89,33 @@ test("POST /api/analyze returns report payload from sample JSON", async () => {
   const content = fs.readFileSync(samplePath, "utf-8");
 
   const response = await fetch(`${baseUrl}/api/analyze`, {
+  assert.equal(payload.service, "lrc-btl-redirect");
+  assert.equal(payload.payments.available, false);
+  assert.equal(payload.payments.mode, "hold");
+  assert.match(payload.target, /^https:\/\/www\.lrcpropertyllc\.com\/#paywall$/);
+  assert.equal(typeof payload.now, "string");
+});
+
+test("POST /create-checkout-session returns hold response", async () => {
+  const response = await fetch(`${baseUrl}/create-checkout-session`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ reportId: "report_1234567890" }),
+  });
+
+  assert.equal(response.status, 503);
+  assert.equal(typeof response.headers.get("x-request-id"), "string");
+
+  const payload = await response.json();
+  assert.equal(payload.available, false);
+  assert.equal(payload.mode, "hold");
+  assert.match(payload.error, /payments are currently on hold/i);
+});
+
+test("POST /api/checkout/session returns hold response", async () => {
+  const response = await fetch(`${baseUrl}/api/checkout/session`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -122,4 +175,24 @@ test("POST /create-checkout-session returns 503 when Stripe is not configured", 
   assert.equal(response.status, 503);
   const payload = await response.json();
   assert.match(payload.error, /payments are not configured/i);
+    body: JSON.stringify({ reportId: "report_1234567890" }),
+  });
+
+  assert.equal(response.status, 503);
+  const payload = await response.json();
+  assert.equal(payload.available, false);
+  assert.equal(payload.mode, "hold");
+  assert.match(payload.error, /payments are currently on hold/i);
+});
+
+test("GET /payment-status reports unpaid hold state", async () => {
+  const response = await fetch(`${baseUrl}/payment-status?report_id=report_1234567890`);
+
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.available, false);
+  assert.equal(payload.mode, "hold");
+  assert.equal(payload.reportId, "report_1234567890");
+  assert.equal(payload.paid, false);
+  assert.equal(payload.paymentStatus, "unpaid");
 });

@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Start | Formed.</title>
+    <meta name="description" content="Start a free Formed. intake and generate a structured launch path for an LLC, product, document packet, or data review." />
+    <link rel="stylesheet" href="/formed.css" />
+    <link rel="stylesheet" href="/start.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="brand" href="/" aria-label="Formed home">
+        <span class="brand-mark">F.</span>
+        <span>
+          <strong>Formed.</strong>
+          <small>by LRC Property LLC</small>
+        </span>
+      </a>
+      <nav aria-label="Primary navigation">
+        <a href="/">Platform</a>
+        <a href="/start">Start</a>
+        <a href="/between-the-lines">Between The Lines</a>
+        <a href="/privacy">Privacy</a>
+      </nav>
+    </header>
+
+    <main class="section-shell intake-shell">
+      <section class="intake-hero">
+        <p class="eyebrow">Free Formed. intake</p>
+        <h1>Answer a few questions. Get a structured launch path.</h1>
+        <p class="hero-text">
+          This first intake does not collect payment and does not ask for sensitive uploads. It turns your starting point into a practical build plan.
+        </p>
+      </section>
+
+      <section class="intake-layout" aria-label="Formed intake workflow">
+        <form id="formed-intake" class="intake-form">
+          <fieldset>
+            <legend>1. Choose your path</legend>
+            <div class="option-grid">
+              <label class="choice-card">
+                <input type="radio" name="path" value="llc" checked />
+                <span>Start an LLC</span>
+                <small>Formation steps, setup basics, documents, and launch order.</small>
+              </label>
+              <label class="choice-card">
+                <input type="radio" name="path" value="product" />
+                <span>Build a product</span>
+                <small>Offer, page, pricing, workflow, and first usable version.</small>
+              </label>
+              <label class="choice-card">
+                <input type="radio" name="path" value="documents" />
+                <span>Organize documents</span>
+                <small>Packets, PDFs, policies, templates, and export structure.</small>
+              </label>
+              <label class="choice-card">
+                <input type="radio" name="path" value="data" />
+                <span>Analyze messy data</span>
+                <small>Messages, timelines, records, reports, and pattern review.</small>
+              </label>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>2. Define the goal</legend>
+            <label class="field-label">
+              What are you trying to create or fix?
+              <textarea name="goal" rows="4" placeholder="Example: I want to turn my idea into a simple paid tool, with a landing page, payment flow, and data policy."></textarea>
+            </label>
+            <div class="field-grid">
+              <label class="field-label">
+                Timeline
+                <select name="timeline">
+                  <option value="today">I need movement today</option>
+                  <option value="week">This week</option>
+                  <option value="month">This month</option>
+                  <option value="steady">Slow and steady</option>
+                </select>
+              </label>
+              <label class="field-label">
+                Current stage
+                <select name="stage">
+                  <option value="idea">Rough idea</option>
+                  <option value="started">Started but messy</option>
+                  <option value="live">Already live</option>
+                  <option value="repair">Needs repair or cleanup</option>
+                </select>
+              </label>
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>3. Pick the output</legend>
+            <div class="option-grid compact">
+              <label class="choice-card">
+                <input type="checkbox" name="output" value="checklist" checked />
+                <span>Checklist</span>
+              </label>
+              <label class="choice-card">
+                <input type="checkbox" name="output" value="page" checked />
+                <span>Landing page plan</span>
+              </label>
+              <label class="choice-card">
+                <input type="checkbox" name="output" value="data" />
+                <span>Data plan</span>
+              </label>
+              <label class="choice-card">
+                <input type="checkbox" name="output" value="monetization" checked />
+                <span>Monetization path</span>
+              </label>
+            </div>
+          </fieldset>
+
+          <div class="intake-actions">
+            <button class="button primary" type="submit">Generate launch path</button>
+            <button class="button secondary" type="reset">Reset</button>
+          </div>
+          <p class="intake-note">No payment. No account. No sensitive file upload. This is the first free Formed. product path.</p>
+        </form>
+
+        <aside class="plan-panel" aria-live="polite">
+          <p class="eyebrow">Generated plan</p>
+          <div id="plan-output" class="plan-output empty-state">
+            <h2>Your launch path will appear here.</h2>
+            <p>Choose a path, define the goal, then generate a structured action plan.</p>
+          </div>
+        </aside>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>© LRC Property LLC. Formed. intake outputs are informational planning tools, not professional advice.</p>
+      <div>
+        <a href="/terms">Terms</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/data-retention">Data retention</a>
+      </div>
+    </footer>
+
+    <script src="/start.js" defer></script>
+  </body>
+</html>
