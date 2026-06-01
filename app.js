@@ -5,7 +5,7 @@ import htm from "https://esm.sh/htm@3.1.1";
 const html = htm.bind(React.createElement);
 
 const agents = [
-  { name: "Agent 1: Spotter", area: "Central orchestration", status: "Active", permission: "Recommend and request approval", risk: "High", task: "Coordinate MVP launch state and route unresolved work" },
+  { name: "Agent 1: The Dean", area: "Central orchestration", status: "Active", permission: "Recommend and request approval", risk: "High", task: "Coordinate MVP launch state, route unresolved work, and keep construction zones disciplined" },
   { name: "Agent 2: Security Gate", area: "Security and release review", status: "Active", permission: "Review, block, and recommend", risk: "High", task: "Assist Coadster by verifying safe MVP deployment boundaries" },
   { name: "Coadster", area: "DeployOps", status: "Active", permission: "Deploy only approved MVP changes", risk: "High", task: "Complete hosting deploy and verify health check" },
   { name: "Formed Agent", area: "Founder intake", status: "Active", permission: "Draft and recommend", risk: "Medium", task: "Prepare founder workflows" },
@@ -18,7 +18,7 @@ const agents = [
 const tasks = [
   { title: "Deploy visible control room", agent: "Coadster", status: "Working", risk: "Medium", next: "Redeploy from main and verify /healthz" },
   { title: "Security release gate", agent: "Agent 2: Security Gate", status: "Working", risk: "High", next: "Confirm no secrets, payments, account changes, or external sends are active" },
-  { title: "Place unfinished modules on hold", agent: "Spotter", status: "Completed", risk: "Low", next: "Show construction-zone labels" },
+  { title: "Coordinate construction-zone discipline", agent: "Agent 1: The Dean", status: "Completed", risk: "Low", next: "Keep unfinished modules visible but locked" },
   { title: "Prepare approval gate", agent: "Builder Agent", status: "Waiting Approval", risk: "High", next: "Owner review before external action" },
   { title: "EmailOps integration", agent: "EmailOps Agent", status: "Construction", risk: "High", next: "Connect only after scope approval" },
   { title: "AccountOps governance", agent: "AccountOps Agent", status: "Holding", risk: "High", next: "Remain in Admissions Room" },
@@ -49,14 +49,14 @@ function Dashboard() {
   const blocked = approvals.length;
   return html`
     <div className="grid four">
-      <${Card} title="Active Operators"><p className="metric">${active}</p><p>Spotter, Security Agent 2, Coadster, and Formed are active for MVP.</p><//>
+      <${Card} title="Active Operators"><p className="metric">${active}</p><p>The Dean, Security Agent 2, Coadster, and Formed are active for MVP.</p><//>
       <${Card} title="Construction Zones"><p className="metric">${construction}</p><p>Shown publicly as opening soon.</p><//>
       <${Card} title="Admissions Room"><p className="metric">${holding}</p><p>AccountOps is intentionally held.</p><//>
       <${Card} title="Blocked Actions"><p className="metric">${blocked}</p><p>No external action without approval.</p><//>
     </div>
     <${Card} title="Launch Position">
       <p>The live product is the agent operations control room. Incomplete systems are labeled as construction zones rather than hidden or overbuilt.</p>
-      <p className="rule">Coadster handles deployment. Spotter coordinates. Security Agent 2 reviews release safety. No agent may publish, send, deploy beyond the approved MVP, spend, file, expose data, or change accounts without approval.</p>
+      <p className="rule">Coadster handles deployment. The Dean coordinates. Security Agent 2 reviews release safety. No agent may publish, send, deploy beyond the approved MVP, spend, file, expose data, or change accounts without approval.</p>
     <//>
   `;
 }
@@ -106,6 +106,7 @@ function AuditLog() {
   const events = [
     "Control Room MVP prepared for deployment",
     "Coadster assigned to DeployOps completion",
+    "Agent 1 renamed The Dean",
     "Security Agent 2 activated as release gate",
     "AccountOps moved to Admissions Room holding state",
     "Construction-zone labels applied to incomplete modules",
@@ -135,7 +136,7 @@ function App() {
   }, [active]);
 
   return html`<main>
-    <aside><div className="brand"><strong>Spotter</strong><span>Control Room MVP</span></div>${nav.map((item) => html`<button key=${item} className=${active === item ? "active" : ""} onClick=${() => setActive(item)}>${item}</button>`)}</aside>
+    <aside><div className="brand"><strong>The Dean</strong><span>Control Room MVP</span></div>${nav.map((item) => html`<button key=${item} className=${active === item ? "active" : ""} onClick=${() => setActive(item)}>${item}</button>`)}</aside>
     <section className="workspace"><header><div><p className="eyebrow">Coulter Operations</p><h1>${active}</h1></div><${Badge} tone="live">Deployable MVP<//></header>${content}</section>
   </main>`;
 }
