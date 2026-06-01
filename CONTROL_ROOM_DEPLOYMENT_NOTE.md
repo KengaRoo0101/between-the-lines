@@ -6,6 +6,7 @@ MVP target: deploy visible dashboard first. Hold incomplete modules as construct
 
 - Founder approval: received.
 - Coadster approval: received.
+- Final deploy approval: received.
 - Deployment posture: approved for live MVP release.
 - Runtime: `npm start` serves `mvp-server.js`.
 - Safety posture: unfinished automation remains locked behind construction-zone labels.
